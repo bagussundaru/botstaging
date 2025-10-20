@@ -1,0 +1,30 @@
+[Unit]
+Description=🎯 Sniper Bybit Webhook Server - Production
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=clurut
+Group=clurut
+WorkingDirectory=/home/clurut/binance_webhook
+Environment=PATH=/home/clurut/binance_webhook/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /home/clurut/binance_webhook/bybit_webhook_app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sniper-webhook
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=false
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

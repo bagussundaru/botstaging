@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APINUR Dashboard - Simple</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .metric-card {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .metric-label {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        .metric-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        .refresh-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 10px;
+        }
+        .refresh-btn:hover {
+            background: #45a049;
+        }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .status.success {
+            background: rgba(76, 175, 80, 0.3);
+        }
+        .status.error {
+            background: rgba(244, 67, 54, 0.3);
+        }
+        .raw-data {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        .positive { color: #4CAF50; }
+        .negative { color: #f44336; }
+        .neutral { color: #FFC107; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 APINUR Dashboard</h1>
+            <button class="refresh-btn" onclick="loadData()">🔄 Refresh Data</button>
+            <div id="lastUpdate">Last Update: Never</div>
+        </div>
+
+        <div id="status" class="status">Loading...</div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">🎯 Trading Pair</div>
+                <div class="metric-value" id="tradingPair">ETHUSDT</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">💰 Total Equity</div>
+                <div class="metric-value" id="totalEquity">$0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">📊 Used Margin</div>
+                <div class="metric-value" id="usedMargin">$0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">📈 Unrealized PNL</div>
+                <div class="metric-value" id="unrealizedPnl">$0.00</div>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">📊 Open Positions</div>
+            <div id="openPositions">No open positions</div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-label">🚨 Last Alert</div>
+            <div id="lastAlert" class="metric-value">Loading...</div>
+        </div>
+
+        <!-- Alert History Section -->
+        <div class="metric-card" style="margin-top: 20px;">
+            <div class="metric-label">📊 Alert History Real-Time (5 Terakhir)</div>
+            <div style="overflow-x: auto; margin-top: 15px;">
+                <table style="width: 100%; border-collapse: collapse; color: white;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.2);">
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">⏰ Waktu</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">📈 Action</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">💰 Symbol</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">💵 Price</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">🎯 Confidence</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">✅ Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alertTableBody">
+                        <tr>
+                            <td colspan="6" style="padding: 20px; text-align: center; color: #FFC107;">
+                                🔄 Loading alerts...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="alertSummary" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 5px; font-size: 0.9em;">
+                <strong>📊 Ringkasan:</strong><br>
+                🔄 Loading summary...
+            </div>
+        </div>
+
+        <div class="raw-data" id="rawData">
+            Raw API Data will appear here...
+        </div>
+    </div>
+
+    <script>
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        }
+
+        function getPnlClass(pnl) {
+            if (pnl > 0) return 'positive';
+            if (pnl < 0) return 'negative';
+            return 'neutral';
+        }
+
+        async function loadData() {
+            const statusEl = document.getElementById('status');
+            const rawDataEl = document.getElementById('rawData');
+            
+            try {
+                statusEl.textContent = 'Loading data...';
+                statusEl.className = 'status';
+                
+                // Try direct fetch first
+                const response = await fetch('http://localhost:5002/api/dashboard_data', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                rawDataEl.textContent = JSON.stringify(data, null, 2);
+                
+                if (data.success) {
+                    // Update metrics
+                    document.getElementById('totalEquity').textContent = formatCurrency(data.balance.total_equity || 0);
+                    document.getElementById('usedMargin').textContent = formatCurrency(data.balance.used_margin || 0);
+                    
+                    const unrealizedPnl = data.pnl.unrealized_pnl || 0;
+                    const pnlEl = document.getElementById('unrealizedPnl');
+                    pnlEl.textContent = formatCurrency(unrealizedPnl);
+                    pnlEl.className = 'metric-value ' + getPnlClass(unrealizedPnl);
+                    
+                    // Update positions
+                    const positionsEl = document.getElementById('openPositions');
+                    if (data.positions && data.positions.length > 0) {
+                        let positionsHtml = '';
+                        data.positions.forEach(pos => {
+                            positionsHtml += `
+                                <div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                                    <strong>${pos.symbol}</strong> - ${pos.side}<br>
+                                    Size: ${pos.size} | Entry: $${pos.entry_price}<br>
+                                    PNL: <span class="${getPnlClass(pos.unrealized_pnl)}">${formatCurrency(pos.unrealized_pnl)}</span>
+                                </div>
+                            `;
+                        });
+                        positionsEl.innerHTML = positionsHtml;
+                    } else {
+                        positionsEl.innerHTML = 'No open positions';
+                    }
+                    
+                    statusEl.textContent = `✅ Data loaded successfully at ${new Date().toLocaleTimeString()}`;
+                    statusEl.className = 'status success';
+                    document.getElementById('lastUpdate').textContent = `Last Update: ${new Date().toLocaleTimeString()}`;
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+                
+                // Load last alert data
+                await loadLastAlert();
+                
+                // Load latest alerts
+                loadLatestAlerts();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                statusEl.className = 'status error';
+                rawDataEl.textContent = `Error: ${error.message}\n\nTrying alternative method...`;
+                
+                // Try alternative method using JSONP or iframe
+                tryAlternativeMethod();
+            }
+        }
+        
+        async function loadLastAlert() {
+            try {
+                const response = await fetch('http://103.189.234.15:5000/api/last_alert', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateLastAlert(data.last_alert);
+                } else {
+                    document.getElementById('lastAlert').innerHTML = '<span style="color: #ff6b6b;">Error loading alert</span>';
+                }
+            } catch (error) {
+                console.error('Error loading last alert:', error);
+                document.getElementById('lastAlert').innerHTML = '<span style="color: #ff6b6b;">No alert data</span>';
+            }
+        }
+
+        async function loadLatestAlerts() {
+            try {
+                const response = await fetch('http://localhost:5002/api/latest_alerts');
+                const data = await response.json();
+                updateAlertsTable(data);
+            } catch (error) {
+                console.error('Error loading latest alerts:', error);
+                document.getElementById('alertTableBody').innerHTML = 
+                    '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #f44336;">❌ Error loading alerts</td></tr>';
+            }
+        }
+
+        function updateAlertsTable(alerts) {
+            const tableBody = document.getElementById('alertTableBody');
+            const summaryDiv = document.getElementById('alertSummary');
+            
+            if (!alerts || alerts.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #FFC107;">⚠️ No trading signals found</td></tr>';
+                summaryDiv.innerHTML = '<strong>📊 Ringkasan:</strong><br>No trading signals available';
+                return;
+            }
+
+            // Build table rows
+            let tableHTML = '';
+            let totalAlerts = alerts.length;
+            let validAlerts = 0;
+            let failedAlerts = 0;
+
+            alerts.forEach(alert => {
+                const actionColor = alert.action === 'BUY' ? '#4CAF50' : alert.action === 'SELL' ? '#f44336' : '#FFC107';
+                const confidenceColor = alert.confidence ? '#4CAF50' : '#FFC107';
+                
+                let status = '✅ Diterima';
+                let statusColor = '#4CAF50';
+                
+                if (alert.action === 'test') {
+                    status = '⚠️ Test';
+                    statusColor = '#FFC107';
+                } else if (alert.action === 'INVALID') {
+                    status = '❌ Ditolak';
+                    statusColor = '#f44336';
+                    failedAlerts++;
+                } else if (alert.action === 'BUY' || alert.action === 'SELL') {
+                    validAlerts++;
+                }
+
+                tableHTML += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2);">${alert.timestamp}</td>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2); color: ${actionColor};"><strong>📊 ${alert.action}</strong></td>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2);">💰 ${alert.symbol}</td>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2);">💵 ${alert.price || '-'}</td>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2); color: ${confidenceColor};">${alert.confidence || '-'}</td>
+                        <td style="padding: 8px; border: 1px solid rgba(255,255,255,0.2); color: ${statusColor};">${status}</td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = tableHTML;
+
+            // Update summary
+            summaryDiv.innerHTML = `
+                <strong>📊 Ringkasan (5 Terakhir):</strong><br>
+                • Total Signal: <span style="color: #4CAF50;">${totalAlerts}</span><br>
+                • Signal Valid: <span style="color: #4CAF50;">${validAlerts}</span><br>
+                • Signal Gagal: <span style="color: #f44336;">${failedAlerts}</span><br>
+                • Last Update: <span style="color: #FFC107;">${new Date().toLocaleTimeString()}</span>
+            `;
+        }
+        
+        function updateLastAlert(alertData) {
+            const alertEl = document.getElementById('lastAlert');
+            if (alertData) {
+                alertEl.innerHTML = `
+                    <div style="font-size: 0.9em;">
+                        <div><strong>${alertData.symbol || 'N/A'}</strong></div>
+                        <div>${alertData.message || 'No message'}</div>
+                        <div style="font-size: 0.8em; opacity: 0.8;">${alertData.timestamp || 'No timestamp'}</div>
+                    </div>
+                `;
+            } else {
+                alertEl.innerHTML = '<span style="color: #FFC107;">No recent alerts</span>';
+            }
+        }
+
+        function tryAlternativeMethod() {
+            // Alternative method removed due to cross-origin issues
+            document.getElementById('rawData').textContent = 'Unable to load data. Please check if the API server is running and accessible.';
+            document.getElementById('status').textContent = '❌ Failed to connect to API server';
+            document.getElementById('status').className = 'status error';
+        }
+
+        // Auto refresh every 30 seconds
+        setInterval(loadData, 30000);
+        
+        // Load data on page load
+        window.addEventListener('load', loadData);
+    </script>
+</body>
+</html>

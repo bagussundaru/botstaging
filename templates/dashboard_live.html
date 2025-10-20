@@ -1,0 +1,2318 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 SniperBot Pro - Advanced Trading Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #00ff88 0%, #00d4ff 100%);
+            --danger-gradient: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            --warning-gradient: linear-gradient(135deg, #ffd93d 0%, #ff6b6b 100%);
+            --purple-gradient: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+            --blue-gradient: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            --dark-bg: #0a0a0f;
+            --card-bg: rgba(255, 255, 255, 0.08);
+            --card-border: rgba(255, 255, 255, 0.15);
+            --text-primary: #ffffff;
+            --text-secondary: #b8bcc8;
+            --accent-blue: #00d4ff;
+            --accent-green: #00ff88;
+            --accent-purple: #8b5cf6;
+            --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            --shadow-xl: 0 35px 60px -12px rgba(0, 0, 0, 0.35);
+            --glow-blue: 0 0 30px rgba(0, 212, 255, 0.3);
+            --glow-green: 0 0 30px rgba(0, 255, 136, 0.3);
+            --glow-purple: 0 0 30px rgba(139, 92, 246, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--dark-bg);
+            background-image: 
+                radial-gradient(circle at 20% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 212, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(0, 255, 136, 0.1) 0%, transparent 50%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            animation: backgroundShift 20s ease-in-out infinite;
+        }
+
+        @keyframes backgroundShift {
+            0%, 100% { 
+                background-position: 0% 50%; 
+            }
+            50% { 
+                background-position: 100% 50%; 
+            }
+        }
+
+        .hero-section {
+            background: var(--primary-gradient);
+            padding: 60px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .hero-title {
+            font-size: 4rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #fff, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        }
+
+        .hero-subtitle {
+            font-size: 1.5rem;
+            font-weight: 400;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-active { background: var(--accent-green); box-shadow: 0 0 20px var(--accent-green); }
+        .status-idle { background: var(--warning-gradient); }
+        .status-error { background: var(--danger-gradient); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .stats-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--success-gradient);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-lg);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            background: var(--success-gradient);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .stat-change {
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .refresh-btn i {
+            transition: transform 0.3s ease;
+        }
+
+        .refresh-btn:hover i {
+            transform: rotate(180deg);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero-title { font-size: 2.2rem; }
+            .hero-subtitle { font-size: 1rem; }
+            .cards-grid-2,
+            .cards-grid-3,
+            .cards-grid-4,
+            .cards-grid-5 { 
+                grid-template-columns: 1fr; 
+            }
+            .container { padding: 20px 15px; }
+            .card { padding: 20px; }
+            .card-value { font-size: 1.8rem; }
+        }
+
+        /* Auto-refresh indicator */
+        .auto-refresh {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 1s infinite;
+        }
+
+        /* Modern Card Styling */
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 50px 0 30px 0;
+            color: var(--text-primary);
+            background: var(--success-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: titleGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes titleGlow {
+            0% { filter: drop-shadow(0 0 5px rgba(0, 255, 136, 0.3)); }
+            100% { filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.5)); }
+        }
+
+        .cards-grid {
+            display: grid;
+            gap: 25px;
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .cards-grid-2 { grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); }
+        .cards-grid-3 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+        .cards-grid-4 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        .cards-grid-5 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            animation: cardSlideIn 0.6s ease-out;
+            animation-fill-mode: both;
+        }
+
+        .card:nth-child(1) { animation-delay: 0.1s; }
+        .card:nth-child(2) { animation-delay: 0.2s; }
+        .card:nth-child(3) { animation-delay: 0.3s; }
+        .card:nth-child(4) { animation-delay: 0.4s; }
+        .card:nth-child(5) { animation-delay: 0.5s; }
+
+        @keyframes cardSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(50px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--success-gradient);
+            border-radius: 24px 24px 0 0;
+            transition: all 0.3s ease;
+        }
+
+        .card::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .card:hover {
+            transform: translateY(-12px) scale(1.02);
+            box-shadow: var(--shadow-xl);
+            border-color: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .card:hover::before {
+            height: 6px;
+            box-shadow: var(--glow-green);
+        }
+
+        .card:hover::after {
+            opacity: 1;
+        }
+
+        .balance-card::before { background: var(--success-gradient); }
+        .balance-card:hover::before { box-shadow: var(--glow-green); }
+
+        .pnl-card::before { background: var(--blue-gradient); }
+        .pnl-card:hover::before { box-shadow: var(--glow-blue); }
+
+        .market-card::before { background: var(--purple-gradient); }
+        .market-card:hover::before { box-shadow: var(--glow-purple); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+
+        .card:hover .card-title {
+            color: var(--text-primary);
+        }
+
+        .card-title i {
+            font-size: 1.2rem;
+            background: var(--success-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover .card-title i {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.5));
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover .card-icon {
+            opacity: 1;
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .card-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transition: all 0.3s ease;
+            animation: valueGlow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes valueGlow {
+            0% { filter: drop-shadow(0 0 5px rgba(0, 212, 255, 0.3)); }
+            100% { filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.4)); }
+        }
+
+        .card:hover .card-value {
+            transform: scale(1.05);
+            filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6));
+        }
+
+        .card-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 15px;
+            transition: color 0.3s ease;
+        }
+
+        .card:hover .card-label {
+            color: var(--text-primary);
+        }
+
+        .card-change {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .card-change.positive {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .card-change.negative {
+            background: rgba(255, 107, 107, 0.15);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .card-change.neutral {
+            background: rgba(184, 188, 200, 0.15);
+            color: var(--text-secondary);
+            border: 1px solid rgba(184, 188, 200, 0.3);
+        }
+
+        .card:hover .card-change {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-change i {
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover .card-change i {
+            transform: scale(1.1);
+        }
+
+        .refresh-btn {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(-1px);
+        }
+
+        /* Loading Animation */
+        @keyframes shimmer {
+            0% { background-position: -200px 0; }
+            100% { background-position: calc(200px + 100%) 0; }
+        }
+
+        .loading {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            background-size: 200px 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* Floating Animation */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .card:nth-child(odd) {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .card:nth-child(even) {
+             animation: float 6s ease-in-out infinite reverse;
+         }
+
+         /* Market Card Specific Styling */
+         .market-symbol {
+             font-size: 1.1rem;
+             font-weight: 600;
+             color: var(--accent-purple);
+             margin-bottom: 10px;
+             text-transform: uppercase;
+             letter-spacing: 1px;
+         }
+
+         .market-price {
+             font-size: 2.5rem;
+             font-weight: 800;
+             margin-bottom: 15px;
+             background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+             -webkit-background-clip: text;
+             -webkit-text-fill-color: transparent;
+             background-clip: text;
+             animation: priceGlow 2s ease-in-out infinite alternate;
+         }
+
+         @keyframes priceGlow {
+             0% { filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.3)); }
+             100% { filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.4)); }
+         }
+
+         /* Trading Card Specific Styling */
+         .status-value {
+             font-size: 2.2rem;
+             font-weight: 800;
+             margin-bottom: 8px;
+             background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+             -webkit-background-clip: text;
+             -webkit-text-fill-color: transparent;
+             background-clip: text;
+             transition: all 0.3s ease;
+         }
+
+         .status-label {
+             font-size: 0.9rem;
+             color: var(--text-secondary);
+             font-weight: 500;
+             margin-bottom: 15px;
+             transition: color 0.3s ease;
+         }
+
+         .trading-card::before { background: var(--warning-gradient); }
+         .trading-card:hover::before { box-shadow: 0 0 30px rgba(255, 217, 61, 0.3); }
+
+         /* Trades Table Styling */
+         .trades-table {
+             width: 100%;
+             border-collapse: collapse;
+             margin-top: 20px;
+             background: rgba(255, 255, 255, 0.02);
+             border-radius: 15px;
+             overflow: hidden;
+             backdrop-filter: blur(10px);
+             animation: tableSlideIn 0.8s ease-out;
+         }
+
+         @keyframes tableSlideIn {
+             from {
+                 opacity: 0;
+                 transform: translateY(30px);
+             }
+             to {
+                 opacity: 1;
+                 transform: translateY(0);
+             }
+         }
+
+         .trades-table th {
+             background: var(--primary-gradient);
+             color: white;
+             padding: 15px 12px;
+             text-align: left;
+             font-weight: 600;
+             font-size: 0.9rem;
+             text-transform: uppercase;
+             letter-spacing: 0.5px;
+             border: none;
+             position: relative;
+         }
+
+         .trades-table th::after {
+             content: '';
+             position: absolute;
+             bottom: 0;
+             left: 0;
+             right: 0;
+             height: 2px;
+             background: var(--success-gradient);
+         }
+
+         .trades-table td {
+             padding: 12px;
+             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+             color: var(--text-primary);
+             font-size: 0.85rem;
+             transition: all 0.3s ease;
+         }
+
+         .trades-table tr:hover {
+             background: rgba(255, 255, 255, 0.05);
+             transform: scale(1.01);
+         }
+
+         .trades-table tr:hover td {
+             color: var(--accent-blue);
+         }
+
+         .trade-side-buy {
+             color: var(--accent-green) !important;
+             font-weight: 600;
+             text-transform: uppercase;
+         }
+
+         .trade-side-sell {
+             color: #ff6b6b !important;
+             font-weight: 600;
+             text-transform: uppercase;
+         }
+
+         .trade-pnl-positive {
+             color: var(--accent-green) !important;
+             font-weight: 700;
+             background: linear-gradient(135deg, #00ff88, #00d4ff);
+             -webkit-background-clip: text;
+             -webkit-text-fill-color: transparent;
+             background-clip: text;
+             text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+             animation: profitGlow 2s ease-in-out infinite alternate;
+         }
+
+         .trade-pnl-negative {
+             color: #ff6b6b !important;
+             font-weight: 600;
+         }
+
+         @keyframes profitGlow {
+             0% { filter: drop-shadow(0 0 3px rgba(0, 255, 136, 0.4)); }
+             100% { filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.6)); }
+         }
+
+         /* Profitable Trades Summary Styling */
+         .profit-summary {
+             background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 212, 255, 0.1));
+             border: 2px solid rgba(0, 255, 136, 0.3);
+             border-radius: 15px;
+             padding: 20px;
+             margin: 20px 0;
+             animation: summaryPulse 3s ease-in-out infinite;
+         }
+
+         @keyframes summaryPulse {
+             0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
+             50% { box-shadow: 0 0 25px rgba(0, 255, 136, 0.4); }
+         }
+
+         .profit-metric {
+             display: inline-block;
+             margin: 10px 15px;
+             padding: 10px 15px;
+             background: rgba(0, 255, 136, 0.1);
+             border-radius: 10px;
+             border: 1px solid rgba(0, 255, 136, 0.3);
+         }
+
+         .profit-metric-label {
+             font-size: 0.9rem;
+             color: var(--text-secondary);
+             margin-bottom: 5px;
+         }
+
+         .profit-metric-value {
+             font-size: 1.4rem;
+             font-weight: 800;
+             background: linear-gradient(135deg, #00ff88, #00d4ff);
+             -webkit-background-clip: text;
+             -webkit-text-fill-color: transparent;
+             background-clip: text;
+         }
+
+         .roi-highlight {
+             font-size: 2rem !important;
+             animation: roiPulse 2s ease-in-out infinite;
+         }
+
+         @keyframes roiPulse {
+             0%, 100% { transform: scale(1); }
+             50% { transform: scale(1.05); }
+         }
+
+         /* Loading Spinner */
+         .loading {
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             padding: 40px;
+             color: var(--text-secondary);
+             font-size: 1.1rem;
+         }
+
+         .loading i {
+             margin-right: 10px;
+             color: var(--accent-blue);
+         }
+
+         /* Error Styling */
+         .error {
+             background: rgba(255, 107, 107, 0.1);
+             border: 1px solid rgba(255, 107, 107, 0.3);
+             color: #ff6b6b;
+             padding: 15px 20px;
+             border-radius: 12px;
+             margin-bottom: 20px;
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             animation: errorSlideIn 0.5s ease-out;
+         }
+
+         @keyframes errorSlideIn {
+             from {
+                 opacity: 0;
+                 transform: translateX(-20px);
+             }
+             to {
+                 opacity: 1;
+                 transform: translateX(0);
+             }
+         }
+
+         /* Responsive Improvements */
+         @media (max-width: 768px) {
+             .trades-table {
+                 font-size: 0.75rem;
+             }
+             
+             .trades-table th,
+             .trades-table td {
+                 padding: 8px 6px;
+             }
+             
+             .market-price {
+                 font-size: 2rem;
+             }
+             
+             .status-value {
+                 font-size: 1.8rem;
+             }
+         }
+
+         /* Scroll Animation */
+         @keyframes scrollFade {
+             from {
+                 opacity: 0;
+                 transform: translateY(20px);
+             }
+             to {
+                 opacity: 1;
+                 transform: translateY(0);
+             }
+         }
+
+         .scroll-animate {
+             animation: scrollFade 0.6s ease-out;
+         }
+
+         /* Pulse Animation for Important Values */
+         .pulse-value {
+             animation: pulseValue 2s ease-in-out infinite;
+         }
+
+         @keyframes pulseValue {
+             0%, 100% {
+                 transform: scale(1);
+             }
+             50% {
+                 transform: scale(1.05);
+             }
+         }
+
+         /* Gradient Text Animation */
+         @keyframes gradientShift {
+             0% {
+                 background-position: 0% 50%;
+             }
+             50% {
+                 background-position: 100% 50%;
+             }
+             100% {
+                 background-position: 0% 50%;
+             }
+         }
+
+         .animated-gradient {
+             background: linear-gradient(-45deg, var(--accent-blue), var(--accent-green), var(--accent-purple), var(--accent-blue));
+             background-size: 400% 400%;
+             animation: gradientShift 3s ease infinite;
+             -webkit-background-clip: text;
+             -webkit-text-fill-color: transparent;
+             background-clip: text;
+         }
+
+         /* Trades Table Styling */
+         .trades-table {
+             width: 100%;
+             border-collapse: collapse;
+             margin-top: 20px;
+         }
+
+         .trades-table th,
+         .trades-table td {
+             padding: 12px 15px;
+             text-align: left;
+             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+         }
+
+         .trades-table th {
+             background: rgba(255, 255, 255, 0.05);
+             font-weight: 600;
+             color: var(--text-secondary);
+             text-transform: uppercase;
+             font-size: 0.85rem;
+             letter-spacing: 0.5px;
+         }
+
+         .trades-table tbody tr {
+             transition: all 0.3s ease;
+         }
+
+         .trades-table tbody tr:hover {
+             background: rgba(255, 255, 255, 0.05);
+             transform: scale(1.01);
+         }
+
+         /* Trade Side Styling */
+         .trade-side-buy {
+             color: var(--accent-green);
+             font-weight: 700;
+             text-shadow: 0 0 10px rgba(0, 255, 127, 0.3);
+         }
+
+         .trade-side-sell {
+             color: #ff6b6b;
+             font-weight: 700;
+             text-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
+         }
+
+         /* PnL Styling */
+         .trade-pnl-positive {
+             color: var(--accent-green);
+             font-weight: 600;
+         }
+
+         .trade-pnl-negative {
+             color: #ff6b6b;
+             font-weight: 600;
+         }
+
+         /* Fee Rebate Styling */
+         .trade-fee-rebate {
+             color: var(--accent-green);
+             font-weight: 600;
+             text-shadow: 0 0 8px rgba(0, 255, 127, 0.2);
+         }
+
+         /* Tooltip Styling */
+         .trades-table tbody tr[title] {
+             position: relative;
+         }
+
+         .trades-table tbody tr[title]:hover::after {
+             content: attr(title);
+             position: absolute;
+             bottom: 100%;
+             left: 50%;
+             transform: translateX(-50%);
+             background: rgba(0, 0, 0, 0.9);
+             color: white;
+             padding: 8px 12px;
+             border-radius: 6px;
+             font-size: 0.8rem;
+             white-space: nowrap;
+             z-index: 1000;
+             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+         }
+    </style>
+</head>
+<body>
+    <!-- Auto-refresh indicator -->
+    <div class="auto-refresh">
+        <div class="refresh-indicator"></div>
+        <span>Auto-refresh: ON</span>
+    </div>
+
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1 class="hero-title">🚀 SniperBot Pro</h1>
+            <p class="hero-subtitle">Advanced Bybit Trading Dashboard</p>
+            <div class="status-badge">
+                <div class="status-indicator status-active"></div>
+                <span id="botStatus">Bot Active</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Error Container -->
+        <div id="errorContainer"></div>
+
+        <!-- Account & Balance Section -->
+        <div class="section-title">
+            <i class="fas fa-wallet"></i>
+            Account & Balance
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button class="refresh-btn" onclick="loadHistoricalPnLTrades()" style="background: var(--success-gradient);">
+                    <i class="fas fa-history"></i>
+                    Historical PnL
+                </button>
+                <button class="refresh-btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+            </div>
+        </div>
+        
+        <div class="cards-grid cards-grid-5">
+            <div class="card balance-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-coins"></i>
+                        Total Balance
+                    </div>
+                    <div class="card-icon">💰</div>
+                </div>
+                <div class="card-value" id="totalBalance">$0.00</div>
+                <div class="card-label">USDT</div>
+                <div class="card-change neutral" id="balanceChange">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Current equity</span>
+                </div>
+            </div>
+
+            <div class="card balance-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-money-bill-wave"></i>
+                        Available Balance
+                    </div>
+                    <div class="card-icon">💵</div>
+                </div>
+                <div class="card-value" id="availableBalance">$0.00</div>
+                <div class="card-label">USDT</div>
+                <div class="card-change neutral" id="availableChange">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Ready to trade</span>
+                </div>
+            </div>
+
+            <div class="card balance-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-chart-line"></i>
+                        Equity
+                    </div>
+                    <div class="card-icon">📊</div>
+                </div>
+                <div class="card-value" id="equity">$0.00</div>
+                <div class="card-label">USDT</div>
+                <div class="card-change neutral" id="equityChange">
+                    <i class="fas fa-balance-scale"></i>
+                    <span>Total value</span>
+                </div>
+            </div>
+
+            <div class="card balance-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-percentage"></i>
+                        Margin Ratio
+                    </div>
+                    <div class="card-icon">⚖️</div>
+                </div>
+                <div class="card-value" id="marginRatio">0.00%</div>
+                <div class="card-label">Risk Level</div>
+                <div class="card-change positive" id="marginChange">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Safe</span>
+                </div>
+            </div>
+
+            <div class="card balance-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-chart-area"></i>
+                        Unrealized PnL
+                    </div>
+                    <div class="card-icon">📈</div>
+                </div>
+                <div class="card-value" id="unrealizedPnl">$0.00</div>
+                <div class="card-label">USDT</div>
+                <div class="card-change neutral" id="unrealizedChange">
+                    <i class="fas fa-clock"></i>
+                    <span>Open positions</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PnL & Performance Section -->
+        <div class="section-title">
+            <i class="fas fa-chart-line"></i>
+            PnL & Performance
+        </div>
+        
+        <div class="cards-grid cards-grid-4">
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-dollar-sign"></i>
+                        Real PnL
+                    </div>
+                    <div class="card-icon">💎</div>
+                </div>
+                <div class="card-value" id="realPnl">$0.00</div>
+                <div class="card-label">Total Profit/Loss</div>
+                <div class="card-change positive" id="pnlChange">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>+11.03% ROI</span>
+                </div>
+            </div>
+
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-percentage"></i>
+                        ROI
+                    </div>
+                    <div class="card-icon">📊</div>
+                </div>
+                <div class="card-value" id="roi">0.00%</div>
+                <div class="card-label">Return on Investment</div>
+                <div class="card-change positive" id="roiChange">
+                    <i class="fas fa-trending-up"></i>
+                    <span>Performance</span>
+                </div>
+            </div>
+
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-receipt"></i>
+                        Total Fees
+                    </div>
+                    <div class="card-icon">💸</div>
+                </div>
+                <div class="card-value" id="totalFees">$0.00</div>
+                <div class="card-label">Trading Costs</div>
+                <div class="card-change neutral" id="feesChange">
+                    <i class="fas fa-calculator"></i>
+                    <span>All trades</span>
+                </div>
+            </div>
+
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-money-check-alt"></i>
+                        Net PnL
+                    </div>
+                    <div class="card-icon">💰</div>
+                </div>
+                <div class="card-value" id="netPnl">$0.00</div>
+                <div class="card-label">After Fees</div>
+                <div class="card-change positive" id="netPnlChange">
+                    <i class="fas fa-check-double"></i>
+                    <span>Final result</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Statistics -->
+        <div class="cards-grid cards-grid-3">
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-exchange-alt"></i>
+                        Total Trades
+                    </div>
+                    <div class="card-icon">🔄</div>
+                </div>
+                <div class="card-value" id="totalTrades">0</div>
+                <div class="card-label">Executed Orders</div>
+                <div class="card-change neutral" id="tradesChange">
+                    <i class="fas fa-history"></i>
+                    <span>All time</span>
+                </div>
+            </div>
+
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-trophy"></i>
+                        Win Rate
+                    </div>
+                    <div class="card-icon">🎯</div>
+                </div>
+                <div class="card-value" id="winRate">0%</div>
+                <div class="card-label">Success Rate</div>
+                <div class="card-change neutral" id="winRateChange">
+                    <i class="fas fa-target"></i>
+                    <span>Profitable trades</span>
+                </div>
+            </div>
+
+            <div class="card pnl-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-piggy-bank"></i>
+                        Initial Deposit
+                    </div>
+                    <div class="card-icon">🏦</div>
+                </div>
+                <div class="card-value" id="initialDeposit">$0.00</div>
+                <div class="card-label">Starting Capital</div>
+                <div class="card-change neutral" id="depositChange">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>First deposit</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Market Data Section -->
+        <div class="section-title">
+            <i class="fas fa-chart-candlestick"></i>
+            Real-time Market Data
+        </div>
+        
+        <div class="cards-grid cards-grid-3">
+            <div class="card market-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fab fa-ethereum"></i>
+                        ETH/USDT
+                    </div>
+                    <div class="card-icon">🔥</div>
+                </div>
+                <div class="market-symbol">ETHUSDT</div>
+                <div class="market-price" id="ethPrice">$0.00</div>
+                <div class="card-change neutral" id="ethChange">
+                    <i class="fas fa-clock"></i>
+                    <span>Live price</span>
+                </div>
+            </div>
+
+            <div class="card market-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fab fa-bitcoin"></i>
+                        BTC/USDT
+                    </div>
+                    <div class="card-icon">₿</div>
+                </div>
+                <div class="market-symbol">BTCUSDT</div>
+                <div class="market-price" id="btcPrice">$0.00</div>
+                <div class="card-change neutral" id="btcChange">
+                    <i class="fas fa-clock"></i>
+                    <span>Live price</span>
+                </div>
+            </div>
+
+            <div class="card market-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-sun"></i>
+                        SOL/USDT
+                    </div>
+                    <div class="card-icon">☀️</div>
+                </div>
+                <div class="market-symbol">SOLUSDT</div>
+                <div class="market-price" id="solPrice">$0.00</div>
+                <div class="card-change neutral" id="solChange">
+                    <i class="fas fa-clock"></i>
+                    <span>Live price</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Status & Position Section -->
+        <div class="section-title">
+            <i class="fas fa-cogs"></i>
+            Trading Status & Position
+        </div>
+        
+        <div class="cards-grid cards-grid-4">
+            <div class="card trading-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-crosshairs"></i>
+                        Current Positions
+                    </div>
+                    <div class="card-icon">🎯</div>
+                </div>
+                <div class="status-value" id="currentPositions">0</div>
+                <div class="status-label">Open positions</div>
+                <div class="card-change neutral" id="positionsChange">
+                    <i class="fas fa-info-circle"></i>
+                    <span>No active trades</span>
+                </div>
+            </div>
+
+            <div class="card trading-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-calendar-day"></i>
+                        Daily Trades
+                    </div>
+                    <div class="card-icon">📅</div>
+                </div>
+                <div class="status-value" id="dailyTrades">0</div>
+                <div class="status-label">Today's trades</div>
+                <div class="card-change neutral" id="dailyTradesChange">
+                    <i class="fas fa-clock"></i>
+                    <span>Max: 8 trades</span>
+                </div>
+            </div>
+
+            <div class="card trading-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-shield-alt"></i>
+                        Risk per Trade
+                    </div>
+                    <div class="card-icon">🛡️</div>
+                </div>
+                <div class="status-value" id="riskPerTrade">4.0%</div>
+                <div class="status-label">Risk management</div>
+                <div class="card-change positive" id="riskChange">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Conservative</span>
+                </div>
+            </div>
+
+            <div class="card trading-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-bullseye"></i>
+                        Target Symbol
+                    </div>
+                    <div class="card-icon">🎯</div>
+                </div>
+                <div class="status-value" id="targetSymbol">ETHUSDT</div>
+                <div class="status-label">Active pair</div>
+                <div class="card-change positive" id="symbolChange">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Trading active</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Webhook Alerts Monitoring Section -->
+        <div class="section-title">
+            <i class="fas fa-bell"></i>
+            Webhook Alerts Monitoring
+        </div>
+        
+        <div class="cards-grid cards-grid-5">
+            <div class="card alert-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-signal"></i>
+                        Total Alerts
+                    </div>
+                    <div class="card-icon">📡</div>
+                </div>
+                <div class="card-value" id="totalAlerts">0</div>
+                <div class="card-label">Last Hour</div>
+                <div class="card-change neutral" id="totalAlertsChange">
+                    <i class="fas fa-clock"></i>
+                    <span>TradingView signals</span>
+                </div>
+            </div>
+
+            <div class="card alert-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-check-circle"></i>
+                        Successful
+                    </div>
+                    <div class="card-icon">✅</div>
+                </div>
+                <div class="card-value" id="successfulAlerts">0</div>
+                <div class="card-label">Executed</div>
+                <div class="card-change positive" id="successfulAlertsChange">
+                    <i class="fas fa-thumbs-up"></i>
+                    <span>Orders placed</span>
+                </div>
+            </div>
+
+            <div class="card alert-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-times-circle"></i>
+                        Rejected
+                    </div>
+                    <div class="card-icon">❌</div>
+                </div>
+                <div class="card-value" id="rejectedAlerts">0</div>
+                <div class="card-label">Filtered</div>
+                <div class="card-change negative" id="rejectedAlertsChange">
+                    <i class="fas fa-filter"></i>
+                    <span>Safety filters</span>
+                </div>
+            </div>
+
+            <div class="card alert-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Errors
+                    </div>
+                    <div class="card-icon">⚠️</div>
+                </div>
+                <div class="card-value" id="errorAlerts">0</div>
+                <div class="card-label">Failed</div>
+                <div class="card-change negative" id="errorAlertsChange">
+                    <i class="fas fa-bug"></i>
+                    <span>System errors</span>
+                </div>
+            </div>
+
+            <div class="card alert-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-clock"></i>
+                        Last Alert
+                    </div>
+                    <div class="card-icon">🕐</div>
+                </div>
+                <div class="card-value" id="lastAlertTime">--:--</div>
+                <div class="card-label" id="lastAlertSymbol">No alerts</div>
+                <div class="card-change neutral" id="lastAlertChange">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="lastAlertAction">Waiting...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Webhook Alert Details Section -->
+        <div class="section-title">
+            <i class="fas fa-chart-pie"></i>
+            Alert Details & Statistics
+        </div>
+        
+        <div class="cards-grid cards-grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-ban"></i>
+                        Rejection Reasons
+                    </div>
+                    <div class="card-icon">🚫</div>
+                </div>
+                <div id="rejectionReasons">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span style="margin-left: 10px;">Loading rejection data...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <i class="fas fa-coins"></i>
+                        Symbols Activity
+                    </div>
+                    <div class="card-icon">💱</div>
+                </div>
+                <div id="symbolsActivity">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span style="margin-left: 10px;">Loading symbols data...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Webhook Alerts Section -->
+        <div class="section-title">
+            <i class="fas fa-list-alt"></i>
+            Recent Webhook Alerts (Today)
+        </div>
+        
+        <div class="card">
+            <div class="loading" id="alertsLoading">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span style="margin-left: 10px;">Loading recent alerts...</span>
+            </div>
+            <div id="alertsContainer" style="display: none;">
+                <div id="alertsTableContainer">
+                    <!-- Alerts will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Trades History Section -->
+        <div class="section-title">
+            <i class="fas fa-history"></i>
+            Recent Trades History
+        </div>
+        
+        <div class="card">
+            <div class="loading" id="tradesLoading">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span style="margin-left: 10px;">Loading recent trades...</span>
+            </div>
+            <div id="tradesContainer" style="display: none;">
+                <table class="trades-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Fee</th>
+                            <th>PnL</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesTableBody">
+                        <!-- Trades will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let refreshInterval;
+        let isRefreshing = false;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            startAutoRefresh();
+        });
+
+        // Auto-refresh every 30 seconds
+        function startAutoRefresh() {
+            refreshInterval = setInterval(refreshData, 30000);
+        }
+
+        // Main refresh function
+        async function refreshData() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+
+            try {
+                // Show loading state
+                showLoading();
+
+                // Fetch all data concurrently
+                const [accountData, pnlData, marketData, statusData, tradesData, webhookAlertsData] = await Promise.all([
+                    fetchAccountData(),
+                    fetchPnLData(),
+                    fetchMarketData(),
+                    fetchStatusData(),
+                    fetchTradesData(),
+                    fetchWebhookAlertsData()
+                ]);
+
+                // Update UI with fetched data
+                updateAccountSection(accountData);
+                updatePnLSection(pnlData);
+                updateMarketSection(marketData);
+                updateTradingSection(statusData);
+                updateTradesSection(tradesData);
+                updateWebhookAlertsSection(webhookAlertsData.data);
+                
+                // Update Total Trades with actual trades count from API
+                if (tradesData && tradesData.data && tradesData.data.trades) {
+                    document.getElementById('totalTrades').textContent = tradesData.data.trades.length;
+                } else if (tradesData && tradesData.trades) {
+                    document.getElementById('totalTrades').textContent = tradesData.trades.length;
+                }
+
+                // Clear any errors
+                clearErrors();
+
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                showError('Failed to refresh data: ' + error.message);
+            } finally {
+                isRefreshing = false;
+                hideLoading();
+            }
+        }
+
+        // Fetch functions
+        async function fetchAccountData() {
+            const response = await fetch('/api/bybit/account');
+            if (!response.ok) throw new Error('Failed to fetch account data');
+            return await response.json();
+        }
+
+        async function fetchPnLData() {
+            const response = await fetch('/api/bybit/real-pnl');
+            if (!response.ok) throw new Error('Failed to fetch PnL data');
+            return await response.json();
+        }
+
+        async function fetchMarketData() {
+            const response = await fetch('/api/bybit/market-data');
+            if (!response.ok) throw new Error('Failed to fetch market data');
+            return await response.json();
+        }
+
+        async function fetchStatusData() {
+            const response = await fetch('/api/status');
+            if (!response.ok) throw new Error('Failed to fetch status data');
+            return await response.json();
+        }
+
+        async function fetchTradesData() {
+            const response = await fetch('/api/bybit/trades');
+            if (!response.ok) throw new Error('Failed to fetch trades data');
+            return await response.json();
+        }
+
+        async function fetchWebhookAlertsData() {
+            const response = await fetch('/api/webhook-alerts?hours=24');
+            if (!response.ok) throw new Error('Failed to fetch webhook alerts data');
+            return await response.json();
+        }
+
+        // Update functions
+        function updateAccountSection(data) {
+            // Handle nested data structure
+            const accountData = data.data && data.data.account ? data.data.account : data;
+            
+            document.getElementById('totalBalance').textContent = `$${parseFloat(accountData.total_balance || 0).toFixed(2)}`;
+            document.getElementById('availableBalance').textContent = `$${parseFloat(accountData.available_balance || 0).toFixed(2)}`;
+            document.getElementById('equity').textContent = `$${parseFloat(accountData.equity || 0).toFixed(2)}`;
+            document.getElementById('marginRatio').textContent = `${parseFloat(accountData.margin_ratio || 0).toFixed(2)}%`;
+            document.getElementById('unrealizedPnl').textContent = `$${parseFloat(accountData.total_unrealized_pnl || 0).toFixed(2)}`;
+
+            // Update margin ratio status
+            const marginRatio = parseFloat(accountData.margin_ratio || 0);
+            const marginChange = document.getElementById('marginChange');
+            if (marginRatio < 50) {
+                marginChange.className = 'card-change positive';
+                marginChange.innerHTML = '<i class="fas fa-shield-alt"></i><span>Safe</span>';
+            } else if (marginRatio < 80) {
+                marginChange.className = 'card-change neutral';
+                marginChange.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>Moderate</span>';
+            } else {
+                marginChange.className = 'card-change negative';
+                marginChange.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>High Risk</span>';
+            }
+
+            // Update unrealized PnL status
+            const unrealizedPnl = parseFloat(accountData.total_unrealized_pnl || 0);
+            const unrealizedChange = document.getElementById('unrealizedChange');
+            if (unrealizedPnl > 0) {
+                unrealizedChange.className = 'card-change positive';
+                unrealizedChange.innerHTML = '<i class="fas fa-arrow-up"></i><span>Profit</span>';
+            } else if (unrealizedPnl < 0) {
+                unrealizedChange.className = 'card-change negative';
+                unrealizedChange.innerHTML = '<i class="fas fa-arrow-down"></i><span>Loss</span>';
+            } else {
+                unrealizedChange.className = 'card-change neutral';
+                unrealizedChange.innerHTML = '<i class="fas fa-clock"></i><span>No positions</span>';
+            }
+        }
+
+        function updatePnLSection(data) {
+            document.getElementById('realPnl').textContent = `$${parseFloat(data.net_pnl || 0).toFixed(2)}`;
+            document.getElementById('roi').textContent = `${parseFloat(data.roi_percentage || 0).toFixed(2)}%`;
+            document.getElementById('totalFees').textContent = `$${parseFloat(data.total_fees || 0).toFixed(2)}`;
+            document.getElementById('netPnl').textContent = `$${parseFloat(data.net_pnl || 0).toFixed(2)}`;
+            document.getElementById('totalTrades').textContent = data.total_trades || 0;
+            document.getElementById('winRate').textContent = `${parseFloat(data.win_rate || 0).toFixed(1)}%`;
+            document.getElementById('initialDeposit').textContent = `$${parseFloat(data.initial_deposit || 0).toFixed(2)}`;
+
+            // Update PnL status indicators
+            const netPnl = parseFloat(data.net_pnl || 0);
+            const roi = parseFloat(data.roi_percentage || 0);
+            
+            // Update PnL change indicator
+            const pnlChange = document.getElementById('pnlChange');
+            if (netPnl > 0) {
+                pnlChange.className = 'card-change positive';
+                pnlChange.innerHTML = `<i class="fas fa-arrow-up"></i><span>+${roi.toFixed(2)}% ROI</span>`;
+            } else if (netPnl < 0) {
+                pnlChange.className = 'card-change negative';
+                pnlChange.innerHTML = `<i class="fas fa-arrow-down"></i><span>${roi.toFixed(2)}% ROI</span>`;
+            } else {
+                pnlChange.className = 'card-change neutral';
+                pnlChange.innerHTML = '<i class="fas fa-minus"></i><span>Break even</span>';
+            }
+
+            // Update ROI change indicator
+            const roiChange = document.getElementById('roiChange');
+            if (roi > 10) {
+                roiChange.className = 'card-change positive';
+                roiChange.innerHTML = '<i class="fas fa-fire"></i><span>Excellent</span>';
+            } else if (roi > 0) {
+                roiChange.className = 'card-change positive';
+                roiChange.innerHTML = '<i class="fas fa-trending-up"></i><span>Profitable</span>';
+            } else if (roi < 0) {
+                roiChange.className = 'card-change negative';
+                roiChange.innerHTML = '<i class="fas fa-trending-down"></i><span>Loss</span>';
+            } else {
+                roiChange.className = 'card-change neutral';
+                roiChange.innerHTML = '<i class="fas fa-minus"></i><span>Break even</span>';
+            }
+
+            // Update win rate indicator
+            const winRate = parseFloat(data.win_rate || 0);
+            const winRateChange = document.getElementById('winRateChange');
+            if (winRate >= 60) {
+                winRateChange.className = 'card-change positive';
+                winRateChange.innerHTML = '<i class="fas fa-trophy"></i><span>Excellent</span>';
+            } else if (winRate >= 50) {
+                winRateChange.className = 'card-change positive';
+                winRateChange.innerHTML = '<i class="fas fa-thumbs-up"></i><span>Good</span>';
+            } else if (winRate > 0) {
+                winRateChange.className = 'card-change neutral';
+                winRateChange.innerHTML = '<i class="fas fa-chart-line"></i><span>Improving</span>';
+            } else {
+                winRateChange.className = 'card-change neutral';
+                winRateChange.innerHTML = '<i class="fas fa-question-circle"></i><span>Calculating...</span>';
+            }
+        }
+
+        function updateMarketSection(data) {
+            // Handle nested data structure
+            const marketData = data.data && data.data.market_data ? data.data.market_data : data;
+            
+            // Convert array to object for easier access
+            const marketPrices = {};
+            if (Array.isArray(marketData)) {
+                marketData.forEach(item => {
+                    marketPrices[item.symbol] = item;
+                });
+            } else {
+                // Fallback for old format
+                Object.assign(marketPrices, marketData);
+            }
+            
+            // Update ETH price
+            if (marketPrices.ETHUSDT) {
+                document.getElementById('ethPrice').textContent = `$${parseFloat(marketPrices.ETHUSDT.price || 0).toLocaleString()}`;
+            }
+            
+            // Update BTC price
+            if (marketPrices.BTCUSDT) {
+                document.getElementById('btcPrice').textContent = `$${parseFloat(marketPrices.BTCUSDT.price || 0).toLocaleString()}`;
+            }
+            
+            // Update SOL price
+            if (marketPrices.SOLUSDT) {
+                document.getElementById('solPrice').textContent = `$${parseFloat(marketPrices.SOLUSDT.price || 0).toFixed(2)}`;
+            }
+
+            // Update last updated time for all
+            const lastUpdated = new Date().toLocaleTimeString();
+            document.getElementById('ethChange').innerHTML = `<i class="fas fa-clock"></i><span>Updated: ${lastUpdated}</span>`;
+            document.getElementById('btcChange').innerHTML = `<i class="fas fa-clock"></i><span>Updated: ${lastUpdated}</span>`;
+            document.getElementById('solChange').innerHTML = `<i class="fas fa-clock"></i><span>Updated: ${lastUpdated}</span>`;
+        }
+
+        function updateTradingSection(data) {
+            // Update current positions - check position.size instead of message
+            const activePositions = (data.position && data.position.size && data.position.size > 0) ? data.position.size : 0;
+            document.getElementById('currentPositions').textContent = activePositions;
+            
+            // Update daily trades
+            document.getElementById('dailyTrades').textContent = data.daily_trades || 0;
+            
+            // Update risk per trade
+            document.getElementById('riskPerTrade').textContent = `${data.risk_per_trade || 4.0}%`;
+            
+            // Update target symbol
+            document.getElementById('targetSymbol').textContent = data.target_symbol || 'ETHUSDT';
+
+            // Update positions status
+            const positionsChange = document.getElementById('positionsChange');
+            if (activePositions > 0) {
+                positionsChange.className = 'card-change positive';
+                positionsChange.innerHTML = '<i class="fas fa-play-circle"></i><span>Active trading</span>';
+            } else {
+                positionsChange.className = 'card-change neutral';
+                positionsChange.innerHTML = '<i class="fas fa-pause-circle"></i><span>No positions</span>';
+            }
+
+            // Update daily trades status
+            const dailyTradesChange = document.getElementById('dailyTradesChange');
+            const dailyTrades = data.daily_trades || 0;
+            const maxTrades = data.max_daily_trades || 8;
+            if (dailyTrades >= maxTrades) {
+                dailyTradesChange.className = 'card-change negative';
+                dailyTradesChange.innerHTML = '<i class="fas fa-stop-circle"></i><span>Limit reached</span>';
+            } else if (dailyTrades > maxTrades * 0.7) {
+                dailyTradesChange.className = 'card-change neutral';
+                dailyTradesChange.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>Near limit</span>';
+            } else {
+                dailyTradesChange.className = 'card-change positive';
+                dailyTradesChange.innerHTML = `<i class="fas fa-check-circle"></i><span>Max: ${maxTrades}</span>`;
+            }
+
+            // Update bot status
+            const botStatus = document.getElementById('botStatus');
+            if (data.status === 'active') {
+                botStatus.textContent = 'Bot Active';
+                botStatus.parentElement.querySelector('.status-indicator').className = 'status-indicator status-active';
+            } else {
+                botStatus.textContent = 'Bot Inactive';
+                botStatus.parentElement.querySelector('.status-indicator').className = 'status-indicator status-error';
+            }
+        }
+
+        function updateWebhookAlertsSection(data) {
+            console.log('🔍 updateWebhookAlertsSection called with data:', data);
+            if (!data) return;
+
+            // Update main alert counts with null checks
+            const totalAlertsEl = document.getElementById('totalAlerts');
+            const successfulAlertsEl = document.getElementById('successfulAlerts');
+            const rejectedAlertsEl = document.getElementById('rejectedAlerts');
+            const errorAlertsEl = document.getElementById('errorAlerts');
+
+            if (totalAlertsEl) totalAlertsEl.textContent = data.total_alerts || 0;
+            if (successfulAlertsEl) successfulAlertsEl.textContent = data.successful_alerts || 0;
+            if (rejectedAlertsEl) rejectedAlertsEl.textContent = data.rejected_alerts || 0;
+            if (errorAlertsEl) errorAlertsEl.textContent = data.error_alerts || 0;
+
+            // Update last alert information
+            const lastAlertTimeEl = document.getElementById('lastAlertTime');
+            const lastAlertSymbolEl = document.getElementById('lastAlertSymbol');
+            const lastAlertActionEl = document.getElementById('lastAlertAction');
+
+            if (data.last_alert_time || data.last_alert_symbol || data.last_alert_action) {
+                if (lastAlertTimeEl) lastAlertTimeEl.textContent = data.last_alert_time || 'N/A';
+                if (lastAlertSymbolEl) lastAlertSymbolEl.textContent = data.last_alert_symbol || 'N/A';
+                if (lastAlertActionEl) lastAlertActionEl.textContent = data.last_alert_action || 'N/A';
+            } else {
+                if (lastAlertTimeEl) lastAlertTimeEl.textContent = '--:--';
+                if (lastAlertSymbolEl) lastAlertSymbolEl.textContent = 'No alerts';
+                if (lastAlertActionEl) lastAlertActionEl.textContent = 'Waiting...';
+            }
+
+            // Update rejection reasons
+            const rejectionContainer = document.getElementById('rejectionReasons');
+            if (rejectionContainer) {
+                if (data.rejection_reasons && Object.keys(data.rejection_reasons).length > 0) {
+                    rejectionContainer.innerHTML = Object.entries(data.rejection_reasons)
+                        .map(([reason, count]) => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <span style="color: var(--text-primary);">${reason}</span>
+                                <span style="color: var(--accent-blue); font-weight: 600;">${count}</span>
+                            </div>
+                        `).join('');
+                } else {
+                    rejectionContainer.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No rejections</div>';
+                }
+            }
+
+            // Update symbols activity (top 5)
+            const symbolsContainer = document.getElementById('symbolsActivity');
+            if (symbolsContainer) {
+                if (data.symbols_traded && Object.keys(data.symbols_traded).length > 0) {
+                    const sortedSymbols = Object.entries(data.symbols_traded)
+                        .sort(([,a], [,b]) => b - a)
+                        .slice(0, 5);
+                    
+                    symbolsContainer.innerHTML = sortedSymbols
+                        .map(([symbol, count]) => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <span style="color: var(--text-primary); font-weight: 600;">${symbol}</span>
+                                <span style="color: var(--accent-green); font-weight: 600;">${count}</span>
+                            </div>
+                        `).join('');
+                } else {
+                    symbolsContainer.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No symbols</div>';
+                }
+            }
+
+            // Update card change indicators based on alert counts with null checks
+            const totalAlertsChange = document.getElementById('totalAlertsChange');
+            const totalAlerts = data.total_alerts || 0;
+            if (totalAlertsChange) {
+                if (totalAlerts > 0) {
+                    totalAlertsChange.className = 'card-change positive';
+                    totalAlertsChange.innerHTML = `<i class="fas fa-bell"></i><span>Active</span>`;
+                } else {
+                    totalAlertsChange.className = 'card-change neutral';
+                    totalAlertsChange.innerHTML = '<i class="fas fa-bell-slash"></i><span>No alerts</span>';
+                }
+            }
+
+            const successfulAlertsChange = document.getElementById('successfulAlertsChange');
+            const successfulAlerts = data.successful_alerts || 0;
+            if (successfulAlertsChange) {
+                if (successfulAlerts > 0) {
+                    successfulAlertsChange.className = 'card-change positive';
+                    successfulAlertsChange.innerHTML = `<i class="fas fa-check-circle"></i><span>Executed</span>`;
+                } else {
+                    successfulAlertsChange.className = 'card-change neutral';
+                    successfulAlertsChange.innerHTML = '<i class="fas fa-clock"></i><span>Waiting</span>';
+                }
+            }
+
+            const rejectedAlertsChange = document.getElementById('rejectedAlertsChange');
+            const rejectedAlerts = data.rejected_alerts || 0;
+            if (rejectedAlertsChange) {
+                if (rejectedAlerts > 0) {
+                    rejectedAlertsChange.className = 'card-change negative';
+                    rejectedAlertsChange.innerHTML = `<i class="fas fa-times-circle"></i><span>Filtered</span>`;
+                } else {
+                    rejectedAlertsChange.className = 'card-change positive';
+                    rejectedAlertsChange.innerHTML = '<i class="fas fa-shield-alt"></i><span>Clean</span>';
+                }
+            }
+
+            const errorAlertsChange = document.getElementById('errorAlertsChange');
+            const errorAlerts = data.error_alerts || 0;
+            if (errorAlertsChange) {
+                if (errorAlerts > 0) {
+                    errorAlertsChange.className = 'card-change negative';
+                    errorAlertsChange.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>Issues</span>`;
+                } else {
+                    errorAlertsChange.className = 'card-change positive';
+                    errorAlertsChange.innerHTML = '<i class="fas fa-check"></i><span>Stable</span>';
+                }
+            }
+
+            const lastAlertChange = document.getElementById('lastAlertChange');
+            if (lastAlertChange) {
+                if (data.last_alert_confidence) {
+                    const confidence = parseFloat(data.last_alert_confidence);
+                    if (confidence >= 60) {
+                        lastAlertChange.className = 'card-change positive';
+                        lastAlertChange.innerHTML = `<i class="fas fa-thumbs-up"></i><span>${confidence.toFixed(1)}%</span>`;
+                    } else if (confidence >= 40) {
+                        lastAlertChange.className = 'card-change neutral';
+                        lastAlertChange.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${confidence.toFixed(1)}%</span>`;
+                    } else {
+                        lastAlertChange.className = 'card-change negative';
+                        lastAlertChange.innerHTML = `<i class="fas fa-thumbs-down"></i><span>${confidence.toFixed(1)}%</span>`;
+                    }
+                } else {
+                    lastAlertChange.className = 'card-change neutral';
+                    lastAlertChange.innerHTML = '<i class="fas fa-info-circle"></i><span>Waiting...</span>';
+                }
+            }
+
+            // Update recent alerts section
+            const alertsContainer = document.getElementById('alertsContainer');
+            const alertsLoading = document.getElementById('alertsLoading');
+            const alertsTableContainer = document.getElementById('alertsTableContainer');
+
+            if (alertsContainer && alertsLoading && alertsTableContainer) {
+                console.log('📊 Alert details:', data.alert_details, 'Length:', data.alert_details ? data.alert_details.length : 'undefined');
+                if (data.alert_details && data.alert_details.length > 0) {
+                    alertsTableContainer.innerHTML = `
+                        <div style="margin-bottom: 15px; color: var(--text-primary); font-weight: 600;">
+                            <i class="fas fa-info-circle" style="color: var(--accent-blue);"></i>
+                            Total Alert Diterima: ${data.alert_details.length} Alert
+                        </div>
+                        ${data.alert_details.map((alert, index) => {
+                            const statusIcon = alert.status === 'DITOLAK' ? '❌' : 
+                                             alert.status === 'BERHASIL' ? '✅' : 
+                                             alert.status === 'ERROR' ? '⚠️' : '⏳';
+                            const statusClass = alert.status === 'DITOLAK' ? 'negative' : 
+                                              alert.status === 'BERHASIL' ? 'positive' : 
+                                              alert.status === 'ERROR' ? 'negative' : 'neutral';
+                            
+                            return `
+                                <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; margin-bottom: 15px; border-left: 4px solid var(--accent-blue);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <h4 style="color: var(--accent-blue); margin: 0; font-size: 16px;">
+                                            📨 ALERT #${index + 1}
+                                        </h4>
+                                        <span class="card-change ${statusClass}" style="font-size: 12px; padding: 4px 8px;">
+                                            ${statusIcon} ${alert.status}
+                                        </span>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px;">
+                                        <div><strong style="color: var(--text-secondary);">Waktu:</strong> <span style="color: var(--text-primary);">${alert.timestamp}</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Symbol:</strong> <span style="color: var(--accent-green); font-weight: 600;">${alert.symbol}</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Action:</strong> <span style="color: var(--accent-blue); font-weight: 600;">${alert.action} (${alert.action === 'BUY' ? 'Long Entry' : 'Short Entry'})</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Price:</strong> <span style="color: var(--text-primary);">$${parseFloat(alert.price || 0).toLocaleString()}</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Confidence:</strong> <span style="color: ${parseFloat(alert.confidence) >= 60 ? 'var(--accent-green)' : parseFloat(alert.confidence) >= 40 ? 'var(--accent-yellow)' : 'var(--accent-red)'}; font-weight: 600;">${alert.confidence}%</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Timeframe:</strong> <span style="color: var(--text-primary);">${alert.timeframe}</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Strategy:</strong> <span style="color: var(--text-primary);">${alert.strategy}</span></div>
+                                        <div><strong style="color: var(--text-secondary);">Source:</strong> <span style="color: var(--text-primary);">${alert.source}</span></div>
+                                    </div>
+                                    ${alert.rejection_reason ? `
+                                        <div style="margin-top: 10px; padding: 8px; background: rgba(255,0,0,0.1); border-radius: 4px; border-left: 3px solid var(--accent-red);">
+                                            <strong style="color: var(--accent-red);">Alasan Penolakan:</strong> 
+                                            <span style="color: var(--text-primary);">${alert.rejection_reason}</span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    `;
+                } else {
+                    alertsTableContainer.innerHTML = `
+                        <div style="text-align: center; color: var(--text-secondary); padding: 40px;">
+                            <i class="fas fa-bell-slash" style="font-size: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                            <div style="font-size: 18px; margin-bottom: 5px;">Tidak ada alert hari ini</div>
+                            <div style="font-size: 14px;">Alert webhook dari TradingView akan muncul di sini</div>
+                        </div>
+                    `;
+                }
+
+                alertsLoading.style.display = 'none';
+                alertsContainer.style.display = 'block';
+            }
+        }
+
+        function updateTradesSection(data) {
+            const tradesContainer = document.getElementById('tradesContainer');
+            const tradesLoading = document.getElementById('tradesLoading');
+            const tradesTableBody = document.getElementById('tradesTableBody');
+
+            // Handle nested data structure from API
+            const tradesData = data.data && data.data.trades ? data.data.trades : (data.trades || []);
+            
+            if (!tradesData || tradesData.length === 0) {
+                tradesTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No recent trades found</td></tr>';
+            } else {
+                // Filter trades that have positive PnL only
+                const tradesWithPnL = tradesData.filter(trade => {
+                    const pnl = parseFloat(trade.pnl || 0);
+                    // Show only trades with positive PnL
+                    return pnl > 0;
+                });
+                
+                // Check if there are trades with positive PnL
+                if (tradesWithPnL.length === 0) {
+                    tradesTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No profitable trades found</td></tr>';
+                } else {
+                
+                // Sort trades by timestamp (newest first)
+                const sortedTrades = tradesWithPnL.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                // Show only last 10 trades with positive PnL
+                const recentTrades = sortedTrades.slice(0, 10);
+                
+                tradesTableBody.innerHTML = recentTrades.map(trade => {
+                    const timestamp = new Date(trade.timestamp).toLocaleString('id-ID', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    const side = trade.side.toLowerCase();
+                    const sideClass = side === 'buy' ? 'trade-side-buy' : 'trade-side-sell';
+                    const pnl = parseFloat(trade.pnl || 0);
+                    const pnlClass = pnl > 0 ? 'trade-pnl-positive' : pnl < 0 ? 'trade-pnl-negative' : '';
+                    const fee = parseFloat(trade.fee || 0);
+                    const feeClass = fee < 0 ? 'trade-fee-rebate' : '';
+                    const orderId = trade.order_id ? trade.order_id.substring(0, 8) + '...' : 'N/A';
+                    
+                    return `
+                        <tr title="Order ID: ${trade.order_id || 'N/A'}" style="cursor: pointer;">
+                            <td>${timestamp}</td>
+                            <td><strong>${trade.symbol}</strong></td>
+                            <td class="${sideClass}"><strong>${trade.side.toUpperCase()}</strong></td>
+                            <td><strong>$${parseFloat(trade.price || 0).toFixed(2)}</strong></td>
+                            <td>${parseFloat(trade.quantity || 0).toFixed(4)}</td>
+                            <td class="${feeClass}"><strong>$${fee.toFixed(4)}</strong></td>
+                            <td class="${pnlClass}">$${pnl.toFixed(4)}</td>
+                            <td><strong>$${parseFloat(trade.value || 0).toFixed(2)}</strong></td>
+                        </tr>
+                    `;
+                }).join('');
+                }
+            }
+
+            tradesLoading.style.display = 'none';
+            tradesContainer.style.display = 'block';
+        }
+
+        // Utility functions
+        function showLoading() {
+            // Add loading indicators if needed
+        }
+
+        function hideLoading() {
+            // Remove loading indicators if needed
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${message}</div>`;
+        }
+
+        function clearErrors() {
+            document.getElementById('errorContainer').innerHTML = '';
+        }
+
+        // Format number with commas
+        function formatNumber(num) {
+            return parseFloat(num).toLocaleString();
+        }
+
+        // Format currency
+        function formatCurrency(num) {
+            return `$${parseFloat(num).toFixed(2)}`;
+        }
+
+        // Format percentage
+        function formatPercentage(num) {
+            return `${parseFloat(num).toFixed(2)}%`;
+        }
+
+        // Load Historical PnL Trades
+        async function loadHistoricalPnLTrades() {
+            try {
+                showLoading();
+                clearErrors();
+                
+                // Show loading message in trades table
+                const tradesTableBody = document.getElementById('tradesTableBody');
+                tradesTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading profitable trades...</td></tr>';
+                
+                const response = await fetch('/api/bybit/profitable-trades');
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to load profitable trades');
+                }
+                
+                if (result.success && result.data) {
+                    // Update trades section with profitable data
+                    updateProfitableTradesSection(result.data);
+                    
+                    // Show enhanced summary information
+                    const summary = result.data.summary;
+                    const metrics = result.data.performance_metrics;
+                    if (summary && metrics) {
+                        const summaryMessage = `
+                            🎯 <strong>Bot Performance Summary</strong><br><br>
+                            💰 <strong>Total Profit: ${metrics.total_return}</strong><br>
+                            📈 <strong>ROI: ${metrics.roi_display}</strong><br>
+                            🎯 <strong>Success Rate: ${metrics.success_rate}</strong><br>
+                            📊 <strong>Daily Avg: $${metrics.daily_avg_profit}</strong><br>
+                            🔢 <strong>Total Trades: ${summary.total_trades}</strong><br><br>
+                            <em>🚀 Join our bot for consistent profits!</em>
+                        `;
+                        
+                        // Show summary in a temporary notification
+                        showNotification(summaryMessage, 'success', 10000);
+                    }
+                    
+                    // Update section title to indicate profitable trades
+                    const sectionTitle = document.querySelector('.section-title');
+                    if (sectionTitle) {
+                        sectionTitle.innerHTML = `
+                            <i class="fas fa-chart-line" style="color: #00ff88;"></i>
+                            🎯 Profitable Trades Performance
+                            <div style="margin-left: auto; display: flex; gap: 10px;">
+                                <button class="refresh-btn" onclick="refreshData()" style="background: var(--primary-gradient);">
+                                    <i class="fas fa-sync-alt"></i>
+                                    Back to Live
+                                </button>
+                                <button class="refresh-btn" onclick="loadHistoricalPnLTrades()" style="background: var(--success-gradient);">
+                                    <i class="fas fa-chart-line"></i>
+                                    Refresh Profits
+                                </button>
+                            </div>
+                        `;
+                    }
+                } else {
+                    throw new Error('No profitable trades data available');
+                }
+                
+            } catch (error) {
+                console.error('Error loading profitable trades:', error);
+                showError(`Failed to load profitable trades: ${error.message}`);
+                
+                // Show error in trades table
+                const tradesTableBody = document.getElementById('tradesTableBody');
+                tradesTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);"><i class="fas fa-exclamation-triangle"></i> Error: ${error.message}</td></tr>`;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Update Profitable Trades Section
+        function updateProfitableTradesSection(data) {
+            const tradesTableBody = document.getElementById('tradesTableBody');
+            const tradesLoading = document.getElementById('tradesLoading');
+            const tradesContainer = document.getElementById('tradesContainer');
+
+            // Add attractive summary section before trades table
+            if (data.summary && data.performance_metrics) {
+                const summary = data.summary;
+                const metrics = data.performance_metrics;
+                
+                // Create or update summary section
+                let summarySection = document.getElementById('profitSummarySection');
+                if (!summarySection) {
+                    summarySection = document.createElement('div');
+                    summarySection.id = 'profitSummarySection';
+                    tradesContainer.insertBefore(summarySection, tradesContainer.firstChild);
+                }
+                
+                summarySection.innerHTML = `
+                    <div class="profit-summary">
+                        <h3 style="text-align: center; margin-bottom: 20px; color: var(--accent-green); font-size: 1.5rem;">
+                            🚀 <strong>Bot Performance Dashboard</strong> 🚀
+                        </h3>
+                        <div style="text-align: center;">
+                            <div class="profit-metric">
+                                <div class="profit-metric-label">💰 Total Profit</div>
+                                <div class="profit-metric-value roi-highlight">${metrics.total_return}</div>
+                            </div>
+                            <div class="profit-metric">
+                                <div class="profit-metric-label">📈 ROI</div>
+                                <div class="profit-metric-value roi-highlight">${metrics.roi_display}</div>
+                            </div>
+                            <div class="profit-metric">
+                                <div class="profit-metric-label">🎯 Success Rate</div>
+                                <div class="profit-metric-value">${metrics.success_rate}</div>
+                            </div>
+                            <div class="profit-metric">
+                                <div class="profit-metric-label">📊 Daily Average</div>
+                                <div class="profit-metric-value">$${metrics.daily_avg_profit}</div>
+                            </div>
+                            <div class="profit-metric">
+                                <div class="profit-metric-label">🔢 Total Trades</div>
+                                <div class="profit-metric-value">${summary.total_trades}</div>
+                            </div>
+                        </div>
+                        <div style="text-align: center; margin-top: 15px; font-size: 1.1rem; color: var(--accent-blue);">
+                            <strong>✨ Join our bot for consistent profits! ✨</strong>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (data.trades && data.trades.length > 0) {
+                tradesTableBody.innerHTML = data.trades.map(trade => {
+                    const pnl = parseFloat(trade.pnl || 0);
+                    const fee = parseFloat(trade.fee || 0);
+                    const profitPercentage = parseFloat(trade.profit_percentage || 0);
+                    
+                    // Use correct CSS classes
+                    const pnlClass = pnl > 0 ? 'trade-pnl-positive' : 'trade-pnl-negative';
+                    const sideClass = trade.side === 'BUY' ? 'trade-side-buy' : 'trade-side-sell';
+                    const feeClass = fee < 0 ? 'trade-pnl-positive' : 'trade-pnl-negative';
+                    
+                    return `
+                        <tr style="background: ${pnl > 0 ? 'rgba(0, 255, 136, 0.1)' : 'rgba(255, 255, 255, 0.05)'}; border-left: 3px solid ${pnl > 0 ? '#00ff88' : '#ff6b6b'};">
+                            <td style="color: var(--text-secondary);">${trade.timestamp}</td>
+                            <td><strong style="color: #00d4ff;">${trade.symbol}</strong></td>
+                            <td class="${sideClass}"><strong>${trade.side.toUpperCase()}</strong></td>
+                            <td><strong style="color: #ffd700;">$${parseFloat(trade.price || 0).toFixed(2)}</strong></td>
+                            <td style="color: var(--text-secondary);">${parseFloat(trade.qty || 0).toFixed(4)}</td>
+                            <td class="${feeClass}" style="color: #ff9500;"><strong>$${fee.toFixed(4)}</strong></td>
+                            <td class="${pnlClass}" style="font-weight: bold; font-size: 1.2em;">
+                                ${pnl > 0 ? '+' : ''}$${pnl.toFixed(2)}
+                                ${profitPercentage > 0 ? `<br><small style="color: #00ff88; font-weight: 600;">(+${profitPercentage.toFixed(1)}%)</small>` : ''}
+                            </td>
+                            <td><strong style="color: var(--text-primary);">$${parseFloat(trade.value || 0).toFixed(2)}</strong></td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                tradesTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No profitable trades found</td></tr>';
+            }
+
+            tradesLoading.style.display = 'none';
+            tradesContainer.style.display = 'block';
+        }
+
+        // Show notification function
+        function showNotification(message, type = 'info', duration = 5000) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? 'var(--success-gradient)' : type === 'error' ? 'var(--danger-gradient)' : 'var(--primary-gradient)'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                box-shadow: var(--shadow-lg);
+                z-index: 1000;
+                max-width: 400px;
+                font-size: 0.9rem;
+                line-height: 1.4;
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                animation: slideInRight 0.3s ease-out;
+            `;
+            notification.innerHTML = message;
+            
+            // Add to page
+            document.body.appendChild(notification);
+            
+            // Auto remove after duration
+            setTimeout(() => {
+                notification.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, duration);
+        }
+
+        // Add CSS animations for notifications
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInRight {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOutRight {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

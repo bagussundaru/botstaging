@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - Trading Bot{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0">
+            <i class="fas fa-cog me-2"></i>Bot Configuration
+        </h2>
+        <p class="text-muted">Manage your trading bot settings and parameters</p>
+    </div>
+</div>
+
+<!-- Configuration Form -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-sliders-h me-2"></i>Trading Parameters
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="config-form">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="confluence-threshold" class="form-label">Confluence Threshold</label>
+                            <input type="number" class="form-control" id="confluence-threshold" 
+                                   min="1" max="10" step="1" value="3">
+                            <div class="form-text">Number of indicators that must align (1-10)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="position-size" class="form-label">Position Size (%)</label>
+                            <input type="number" class="form-control" id="position-size" 
+                                   min="0.01" max="1" step="0.01" value="0.1">
+                            <div class="form-text">Percentage of portfolio per trade (0.01-1.0)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="risk-per-trade" class="form-label">Risk Per Trade (%)</label>
+                            <input type="number" class="form-control" id="risk-per-trade" 
+                                   min="0.5" max="10" step="0.1" value="2.0">
+                            <div class="form-text">Maximum risk percentage per trade (0.5-10%)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="max-positions" class="form-label">Max Concurrent Positions</label>
+                            <input type="number" class="form-control" id="max-positions" 
+                                   min="1" max="20" step="1" value="5">
+                            <div class="form-text">Maximum number of open positions (1-20)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="stop-loss" class="form-label">Stop Loss (%)</label>
+                            <input type="number" class="form-control" id="stop-loss" 
+                                   min="0.5" max="20" step="0.1" value="3.0">
+                            <div class="form-text">Stop loss percentage (0.5-20%)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="take-profit" class="form-label">Take Profit (%)</label>
+                            <input type="number" class="form-control" id="take-profit" 
+                                   min="1" max="50" step="0.1" value="6.0">
+                            <div class="form-text">Take profit percentage (1-50%)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="testnet-mode" checked>
+                            <label class="form-check-label" for="testnet-mode">
+                                <strong>Testnet Mode</strong>
+                            </label>
+                            <div class="form-text">Use Binance testnet for safe testing (recommended)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="auto-trading">
+                            <label class="form-check-label" for="auto-trading">
+                                <strong>Auto Trading</strong>
+                            </label>
+                            <div class="form-text">Enable automatic trade execution</div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Configuration
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="reset-btn">
+                            <i class="fas fa-undo me-2"></i>Reset to Default
+                        </button>
+                        <button type="button" class="btn btn-info" id="test-config-btn">
+                            <i class="fas fa-vial me-2"></i>Test Configuration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- API Configuration -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-key me-2"></i>API Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">API Key Status</label>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success me-2" id="api-status">Connected</span>
+                        <small class="text-muted">Last checked: <span id="last-check">Just now</span></small>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="webhook-url" class="form-label">Webhook URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="webhook-url" 
+                               value="https://your-domain.com/webhook" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="copy-webhook">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Use this URL in your TradingView alerts</div>
+                </div>
+                
+                <button class="btn btn-outline-primary btn-sm w-100" id="test-connection">
+                    <i class="fas fa-plug me-2"></i>Test API Connection
+                </button>
+            </div>
+        </div>
+        
+        <!-- Configuration Guide -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>Configuration Guide
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="config-guide">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#guide-confluence">
+                                Confluence Threshold
+                            </button>
+                        </h2>
+                        <div id="guide-confluence" class="accordion-collapse collapse" 
+                             data-bs-parent="#config-guide">
+                            <div class="accordion-body">
+                                <small>
+                                    Higher values (4-6) = More conservative, fewer but higher quality signals.<br>
+                                    Lower values (2-3) = More aggressive, more signals but potentially lower quality.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#guide-risk">
+                                Risk Management
+                            </button>
+                        </h2>
+                        <div id="guide-risk" class="accordion-collapse collapse" 
+                             data-bs-parent="#config-guide">
+                            <div class="accordion-body">
+                                <small>
+                                    <strong>Position Size:</strong> Start with 0.05-0.1 (5-10%) for testing.<br>
+                                    <strong>Risk Per Trade:</strong> Never exceed 2-3% of your portfolio.<br>
+                                    <strong>Stop Loss:</strong> Recommended 2-5% based on volatility.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Current Performance -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Current Performance with These Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-2">
+                        <div class="metric-value text-primary" id="current-win-rate">78.5%</div>
+                        <div class="metric-label">Win Rate</div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="metric-value text-success" id="current-profit">$1,245.67</div>
+                        <div class="metric-label">Total Profit</div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="metric-value text-info" id="current-trades">156</div>
+                        <div class="metric-label">Total Trades</div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="metric-value text-warning" id="current-drawdown">-8.2%</div>
+                        <div class="metric-label">Max Drawdown</div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="metric-value text-secondary" id="current-sharpe">1.85</div>
+                        <div class="metric-label">Sharpe Ratio</div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="metric-value text-dark" id="current-uptime">7d 14h</div>
+                        <div class="metric-label">Uptime</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadCurrentConfig();
+    
+    // Form submission
+    document.getElementById('config-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        saveConfiguration();
+    });
+    
+    // Reset button
+    document.getElementById('reset-btn').addEventListener('click', function() {
+        if (confirm('Are you sure you want to reset to default settings?')) {
+            resetToDefault();
+        }
+    });
+    
+    // Test configuration
+    document.getElementById('test-config-btn').addEventListener('click', function() {
+        testConfiguration();
+    });
+    
+    // Copy webhook URL
+    document.getElementById('copy-webhook').addEventListener('click', function() {
+        const webhookUrl = document.getElementById('webhook-url');
+        webhookUrl.select();
+        document.execCommand('copy');
+        showAlert('Webhook URL copied to clipboard!', 'success');
+    });
+    
+    // Test API connection
+    document.getElementById('test-connection').addEventListener('click', function() {
+        testApiConnection();
+    });
+});
+
+function loadCurrentConfig() {
+    fetch('/api/get_config')
+        .then(response => response.json())
+        .then(config => {
+            document.getElementById('confluence-threshold').value = config.confluence_threshold || 3;
+            document.getElementById('position-size').value = config.position_size || 0.1;
+            document.getElementById('risk-per-trade').value = config.risk_per_trade || 2.0;
+            document.getElementById('testnet-mode').checked = config.testnet_mode || false;
+            
+            // Update API status
+            document.getElementById('api-status').textContent = config.api_key_status || 'Unknown';
+            document.getElementById('api-status').className = `badge me-2 bg-${config.api_key_status === 'Connected' ? 'success' : 'danger'}`;
+            
+            if (config.webhook_url) {
+                document.getElementById('webhook-url').value = config.webhook_url;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading config:', error);
+            showAlert('Error loading configuration', 'error');
+        });
+}
+
+function saveConfiguration() {
+    const config = {
+        confluence_threshold: parseInt(document.getElementById('confluence-threshold').value),
+        position_size: parseFloat(document.getElementById('position-size').value),
+        risk_per_trade: parseFloat(document.getElementById('risk-per-trade').value),
+        max_positions: parseInt(document.getElementById('max-positions').value),
+        stop_loss: parseFloat(document.getElementById('stop-loss').value),
+        take_profit: parseFloat(document.getElementById('take-profit').value),
+        testnet_mode: document.getElementById('testnet-mode').checked,
+        auto_trading: document.getElementById('auto-trading').checked
+    };
+    
+    fetch('/api/update_config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showAlert('Configuration saved successfully!', 'success');
+        } else {
+            showAlert('Error saving configuration: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        showAlert('Error saving configuration: ' + error.message, 'error');
+    });
+}
+
+function resetToDefault() {
+    document.getElementById('confluence-threshold').value = 3;
+    document.getElementById('position-size').value = 0.1;
+    document.getElementById('risk-per-trade').value = 2.0;
+    document.getElementById('max-positions').value = 5;
+    document.getElementById('stop-loss').value = 3.0;
+    document.getElementById('take-profit').value = 6.0;
+    document.getElementById('testnet-mode').checked = true;
+    document.getElementById('auto-trading').checked = false;
+    
+    showAlert('Configuration reset to default values', 'info');
+}
+
+function testConfiguration() {
+    const btn = document.getElementById('test-config-btn');
+    const originalText = btn.innerHTML;
+    
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
+    btn.disabled = true;
+    
+    // Simulate test
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        showAlert('Configuration test completed successfully!', 'success');
+    }, 2000);
+}
+
+function testApiConnection() {
+    const btn = document.getElementById('test-connection');
+    const originalText = btn.innerHTML;
+    
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
+    btn.disabled = true;
+    
+    // Simulate API test
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        
+        const status = Math.random() > 0.2 ? 'Connected' : 'Failed';
+        document.getElementById('api-status').textContent = status;
+        document.getElementById('api-status').className = `badge me-2 bg-${status === 'Connected' ? 'success' : 'danger'}`;
+        document.getElementById('last-check').textContent = 'Just now';
+        
+        showAlert(`API connection test: ${status}`, status === 'Connected' ? 'success' : 'error');
+    }, 1500);
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

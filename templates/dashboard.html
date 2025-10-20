@@ -1,0 +1,704 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Trading Bot{% endblock %}
+
+{% block content %}
+<!-- Overview Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card metric-card bg-gradient-primary text-white">
+            <div class="card-body">
+                <div class="metric-icon">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <div class="metric-value" id="total-pnl">$0.00</div>
+                <div class="metric-label">Total P&L</div>
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar bg-white" role="progressbar" style="width: 65%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card metric-card bg-gradient-success text-white">
+            <div class="card-body">
+                <div class="metric-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="metric-value" id="win-rate">0%</div>
+                <div class="metric-label">Win Rate</div>
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar bg-white" role="progressbar" style="width: 78%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card metric-card bg-gradient-info text-white">
+            <div class="card-body">
+                <div class="metric-icon">
+                    <i class="fas fa-exchange-alt"></i>
+                </div>
+                <div class="metric-value" id="total-trades">0</div>
+                <div class="metric-label">Total Trades</div>
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar bg-white" role="progressbar" style="width: 45%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card metric-card bg-gradient-warning text-white">
+            <div class="card-body">
+                <div class="metric-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="metric-value" id="uptime">0h 0m</div>
+                <div class="metric-label">Bot Uptime</div>
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar bg-white" role="progressbar" style="width: 90%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-area me-2"></i>P&L Performance
+                </h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-1d" checked>
+                    <label class="btn btn-outline-primary" for="tf-1d">1D</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-7d">
+                    <label class="btn btn-outline-primary" for="tf-7d">7D</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="tf-30d">
+                    <label class="btn btn-outline-primary" for="tf-30d">30D</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="pnlChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>Trade Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="tradeDistChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Positions & Recent Alerts -->
+<div class="row mb-4">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Active Positions
+                </h5>
+                <span class="badge bg-primary" id="active-positions-count">0</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Size</th>
+                                <th>Entry Price</th>
+                                <th>Current Price</th>
+                                <th>P&L</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="active-positions-table">
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">No active positions</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-bell me-2"></i>Recent Alerts
+                </h5>
+                <a href="{{ url_for('alerts_page') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body">
+                <div id="recent-alerts" class="alert-list">
+                    <div class="text-center text-muted">No recent alerts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Metrics -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tachometer-alt me-2"></i>Performance Metrics
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-primary" id="sharpe-ratio">0.00</div>
+                            <div class="metric-label">Sharpe Ratio</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-danger" id="max-drawdown">0.00%</div>
+                            <div class="metric-label">Max Drawdown</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-success" id="avg-win">0.00%</div>
+                            <div class="metric-label">Avg Win</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-warning" id="avg-loss">0.00%</div>
+                            <div class="metric-label">Avg Loss</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-info" id="profit-factor">0.00</div>
+                            <div class="metric-label">Profit Factor</div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="text-center">
+                            <div class="metric-value text-secondary" id="total-volume">$0</div>
+                            <div class="metric-label">Total Volume</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    <!-- Log Viewer Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-alt me-2"></i>System Logs & Trading History
+                    </h5>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadWebhookLogs()">
+                            <i class="fas fa-globe me-1"></i>Webhook Logs
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="loadTradingLogs()">
+                            <i class="fas fa-chart-line me-1"></i>Trading Logs
+                        </button>
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="loadBinanceHistory()">
+                            <i class="fas fa-history me-1"></i>Binance History
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="loadSystemStatus()">
+                            <i class="fas fa-server me-1"></i>System Status
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="log-viewer-content">
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-info-circle fa-2x mb-2"></i>
+                            <p>Select a log type above to view system information</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize charts
+let pnlChart, tradeDistChart;
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard initializing...');
+    initializeCharts();
+    loadDashboardData();
+    
+    // Auto refresh every 30 seconds
+    setInterval(loadDashboardData, 30000);
+    
+    // Force initial load after a short delay
+    setTimeout(() => {
+        console.log('Force loading dashboard data...');
+        loadDashboardData();
+    }, 1000);
+    
+    // Timeframe change handlers
+    document.querySelectorAll('input[name="timeframe"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            updatePnLChart(this.id.split('-')[1]);
+        });
+    });
+});
+
+function initializeCharts() {
+    // P&L Chart
+    const pnlCtx = document.getElementById('pnlChart').getContext('2d');
+    pnlChart = new Chart(pnlCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'P&L',
+                data: [],
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    // Trade Distribution Chart
+    const tradeCtx = document.getElementById('tradeDistChart').getContext('2d');
+    tradeDistChart = new Chart(tradeCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Long', 'Short'],
+            datasets: [{
+                data: [0, 0],
+                backgroundColor: ['#28a745', '#dc3545'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+async function loadDashboardData() {
+    try {
+        console.log('Loading dashboard data...');
+        const response = await fetch('/api/dashboard_data');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Dashboard data loaded:', data);
+        
+        updateMetrics(data);
+        updateActivePositions(data.positions || []);
+        updateRecentAlerts(data.recent_alerts || []);
+        updatePerformanceMetrics(data.performance || {});
+        
+        // Show success message
+        showAlert('Dashboard data loaded successfully', 'success');
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        showAlert('Failed to load dashboard data: ' + error.message, 'danger');
+        
+        // Load sample data as fallback
+        loadSampleData();
+    }
+}
+
+// Load sample data as fallback
+function loadSampleData() {
+    console.log('Loading sample data as fallback...');
+    const sampleData = {
+        total_pnl: 66.55,
+        daily_pnl: 0,
+        win_rate: 75.0,
+        total_trades: 4,
+        winning_trades: 3,
+        losing_trades: 1,
+        uptime: "0:14:11",
+        positions: [],
+        recent_alerts: [
+            {
+                message: "Trade executed: BUY 10.0 SOLUSDT at $150.25",
+                symbol: "SOLUSDT",
+                time: "20 min ago",
+                type: "BUY"
+            },
+            {
+                message: "Trade executed: SELL 15.0 SOLUSDT at $148.75",
+                symbol: "SOLUSDT",
+                time: "15 min ago",
+                type: "SELL"
+            }
+        ],
+        performance: {
+            avg_loss: -36.75,
+            avg_win: 34.43,
+            max_drawdown: 66.22,
+            profit_factor: 2.81,
+            sharpe_ratio: 0.39,
+            total_trades: 4,
+            win_rate: 75.0
+        }
+    };
+    
+    updateMetrics(sampleData);
+    updateActivePositions(sampleData.positions);
+    updateRecentAlerts(sampleData.recent_alerts);
+    updatePerformanceMetrics(sampleData.performance);
+    
+    showAlert('Using sample data - check network connection', 'warning');
+}
+
+function updateMetrics(data) {
+    console.log('Updating metrics with data:', data);
+    
+    // Update metrics using correct IDs
+    const totalPnlElement = document.getElementById('total-pnl');
+    if (totalPnlElement) {
+        totalPnlElement.textContent = `$${(data.total_pnl || 0).toFixed(2)}`;
+        totalPnlElement.className = `metric-value ${(data.total_pnl || 0) >= 0 ? 'text-success' : 'text-danger'}`;
+    }
+    
+    const winRateElement = document.getElementById('win-rate');
+    if (winRateElement) {
+        winRateElement.textContent = `${(data.win_rate || 0).toFixed(1)}%`;
+    }
+    
+    const totalTradesElement = document.getElementById('total-trades');
+    if (totalTradesElement) {
+        totalTradesElement.textContent = data.total_trades || 0;
+    }
+    
+    const uptimeElement = document.getElementById('uptime');
+    if (uptimeElement) {
+        uptimeElement.textContent = data.uptime || '0:00:00';
+    }
+    
+    console.log('Metrics updated successfully');
+}
+
+function updateActivePositions(positions) {
+    const tbody = document.getElementById('active-positions-table');
+    const count = document.getElementById('active-positions-count');
+    
+    count.textContent = positions.length;
+    
+    if (positions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active positions</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = positions.map(pos => `
+        <tr>
+            <td><strong>${pos.symbol}</strong></td>
+            <td><span class="badge bg-${pos.side === 'LONG' ? 'success' : 'danger'}">${pos.side}</span></td>
+            <td>${pos.size}</td>
+            <td>$${pos.entry_price}</td>
+            <td>$${pos.current_price}</td>
+            <td class="text-${pos.pnl >= 0 ? 'success' : 'danger'}">$${pos.pnl.toFixed(2)}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="closePosition('${pos.id}')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updateRecentAlerts(alerts) {
+    const container = document.getElementById('recent-alerts');
+    
+    if (alerts.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted">No recent alerts</div>';
+        return;
+    }
+    
+    container.innerHTML = alerts.slice(0, 5).map(alert => `
+        <div class="alert-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
+            <div>
+                <div class="fw-bold">${alert.symbol}</div>
+                <small class="text-muted">${alert.message}</small>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-${alert.type === 'BUY' ? 'success' : 'danger'}">${alert.type}</span>
+                <br>
+                <small class="text-muted">${alert.time}</small>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updatePerformanceMetrics(performance) {
+    document.getElementById('sharpe-ratio').textContent = (performance.sharpe_ratio || 0).toFixed(2);
+    document.getElementById('max-drawdown').textContent = (performance.max_drawdown || 0).toFixed(2) + '%';
+    document.getElementById('avg-win').textContent = (performance.avg_win || 0).toFixed(2) + '%';
+    document.getElementById('avg-loss').textContent = (performance.avg_loss || 0).toFixed(2) + '%';
+    document.getElementById('profit-factor').textContent = (performance.profit_factor || 0).toFixed(2);
+    document.getElementById('total-volume').textContent = '$' + (performance.total_volume || 0).toLocaleString();
+}
+
+function updatePnLChart(timeframe) {
+    fetch(`/api/chart_data?timeframe=${timeframe}`)
+        .then(response => response.json())
+        .then(data => {
+            pnlChart.data.labels = data.labels;
+            pnlChart.data.datasets[0].data = data.pnl_data;
+            pnlChart.update();
+            
+            // Update trade distribution
+            tradeDistChart.data.datasets[0].data = [data.long_trades, data.short_trades];
+            tradeDistChart.update();
+        })
+        .catch(error => {
+            console.error('Error updating chart:', error);
+        });
+}
+
+function closePosition(positionId) {
+    if (!confirm('Are you sure you want to close this position?')) {
+        return;
+    }
+    
+    fetch('/api/close_position', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({position_id: positionId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            loadDashboardData(); // Refresh data
+            showAlert('Position closed successfully', 'success');
+        } else {
+            showAlert('Error closing position: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        showAlert('Error closing position: ' + error.message, 'error');
+    });
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Log Viewer Functions
+function loadWebhookLogs() {
+    fetch('/api/webhook_logs')
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('log-viewer-content');
+            if (data.logs && data.logs.length > 0) {
+                let html = '<h6 class="mb-3"><i class="fas fa-globe text-primary me-2"></i>Webhook Logs (Last 20 entries)</h6>';
+                html += '<div class="table-responsive"><table class="table table-sm table-striped">';
+                html += '<thead><tr><th>Timestamp</th><th>Level</th><th>Message</th></tr></thead><tbody>';
+                
+                data.logs.forEach(log => {
+                    const levelClass = log.level === 'ERROR' ? 'text-danger' : log.level === 'WARNING' ? 'text-warning' : 'text-info';
+                    html += `<tr>
+                        <td><small>${log.timestamp}</small></td>
+                        <td><span class="badge bg-secondary ${levelClass}">${log.level}</span></td>
+                        <td><small>${log.message}</small></td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle fa-2x mb-2"></i><p>No webhook logs found</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading webhook logs:', error);
+            document.getElementById('log-viewer-content').innerHTML = '<div class="alert alert-danger">Error loading webhook logs</div>';
+        });
+}
+
+function loadTradingLogs() {
+    fetch('/api/trading_logs')
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('log-viewer-content');
+            if (data.logs && data.logs.length > 0) {
+                let html = '<h6 class="mb-3"><i class="fas fa-chart-line text-success me-2"></i>Trading Logs (Last 10 trades)</h6>';
+                html += '<div class="table-responsive"><table class="table table-sm table-striped">';
+                html += '<thead><tr><th>Timestamp</th><th>Trade ID</th><th>Symbol</th><th>Action</th><th>Entry Price</th><th>Confidence</th></tr></thead><tbody>';
+                
+                data.logs.forEach(log => {
+                    const actionClass = log.action === 'BUY' ? 'text-success' : 'text-danger';
+                    html += `<tr>
+                        <td><small>${log.timestamp || 'N/A'}</small></td>
+                        <td><small>${log.trade_id || 'N/A'}</small></td>
+                        <td><strong>${log.symbol || 'N/A'}</strong></td>
+                        <td><span class="badge ${log.action === 'BUY' ? 'bg-success' : 'bg-danger'}">${log.action || 'N/A'}</span></td>
+                        <td><small>${log.entry_price || 'N/A'}</small></td>
+                        <td><small>${log.confidence || 'N/A'}</small></td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle fa-2x mb-2"></i><p>No trading logs found</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading trading logs:', error);
+            document.getElementById('log-viewer-content').innerHTML = '<div class="alert alert-danger">Error loading trading logs</div>';
+        });
+}
+
+function loadBinanceHistory() {
+    fetch('/api/binance_history')
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('log-viewer-content');
+            if (data.history && data.history.length > 0) {
+                let html = '<h6 class="mb-3"><i class="fas fa-history text-info me-2"></i>Binance Trading History (Last 20 trades)</h6>';
+                html += '<div class="table-responsive"><table class="table table-sm table-striped">';
+                html += '<thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Quantity</th><th>Price</th><th>Commission</th><th>Realized PnL</th></tr></thead><tbody>';
+                
+                data.history.forEach(trade => {
+                    const sideClass = trade.side === 'BUY' ? 'text-success' : 'text-danger';
+                    const pnlClass = trade.realized_pnl >= 0 ? 'text-success' : 'text-danger';
+                    html += `<tr>
+                        <td><small>${trade.time}</small></td>
+                        <td><strong>${trade.symbol}</strong></td>
+                        <td><span class="badge ${trade.side === 'BUY' ? 'bg-success' : 'bg-danger'}">${trade.side}</span></td>
+                        <td><small>${trade.quantity}</small></td>
+                        <td><small>$${trade.price}</small></td>
+                        <td><small>${trade.commission}</small></td>
+                        <td><small class="${pnlClass}">$${trade.realized_pnl}</small></td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-info-circle fa-2x mb-2"></i><p>No Binance trading history found</p></div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading Binance history:', error);
+            document.getElementById('log-viewer-content').innerHTML = '<div class="alert alert-danger">Error loading Binance history</div>';
+        });
+}
+
+function loadSystemStatus() {
+    fetch('/api/system_status')
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('log-viewer-content');
+            let html = '<h6 class="mb-3"><i class="fas fa-server text-warning me-2"></i>System Status</h6>';
+            
+            html += '<div class="row">';
+            html += '<div class="col-md-6">';
+            html += '<div class="card border-0 bg-light">';
+            html += '<div class="card-body">';
+            html += '<h6 class="card-title">Service Status</h6>';
+            
+            const webhookStatusClass = data.webhook_server === 'Running' ? 'text-success' : 'text-danger';
+            const binanceStatusClass = data.binance_connection === 'Connected' ? 'text-success' : 'text-danger';
+            
+            html += `<p><strong>Webhook Server:</strong> <span class="${webhookStatusClass}">${data.webhook_server}</span></p>`;
+            html += `<p><strong>Binance Connection:</strong> <span class="${binanceStatusClass}">${data.binance_connection}</span></p>`;
+            html += `<p><strong>Dashboard Uptime:</strong> ${data.dashboard_uptime}</p>`;
+            html += `<p><strong>Last Updated:</strong> ${data.last_updated}</p>`;
+            
+            html += '</div></div></div>';
+            
+            html += '<div class="col-md-6">';
+            html += '<div class="card border-0 bg-light">';
+            html += '<div class="card-body">';
+            html += '<h6 class="card-title">Log Files</h6>';
+            
+            Object.entries(data.log_files).forEach(([filename, size]) => {
+                const sizeKB = (size / 1024).toFixed(2);
+                html += `<p><strong>${filename}:</strong> ${sizeKB} KB</p>`;
+            });
+            
+            html += '</div></div></div>';
+            html += '</div>';
+            
+            content.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading system status:', error);
+            document.getElementById('log-viewer-content').innerHTML = '<div class="alert alert-danger">Error loading system status</div>';
+        });
+}
+</script>
+{% endblock %}

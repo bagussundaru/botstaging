@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Trading Bot{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0">
+            <i class="fas fa-chart-bar me-2"></i>Trading Analytics
+        </h2>
+        <p class="text-muted">Analisis mendalam performa trading bot</p>
+    </div>
+</div>
+
+<!-- Performance Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card metric-card">
+            <div class="card-body text-center">
+                <div class="metric-icon text-success">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                <div class="metric-value text-success" id="win-rate">75.2%</div>
+                <div class="metric-label">Win Rate</div>
+                <small class="text-muted">+2.1% dari minggu lalu</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card">
+            <div class="card-body text-center">
+                <div class="metric-icon text-primary">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="metric-value text-primary" id="profit-factor">2.34</div>
+                <div class="metric-label">Profit Factor</div>
+                <small class="text-muted">Excellent performance</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card">
+            <div class="card-body text-center">
+                <div class="metric-icon text-warning">
+                    <i class="fas fa-arrow-down"></i>
+                </div>
+                <div class="metric-value text-warning" id="max-drawdown">-8.5%</div>
+                <div class="metric-label">Max Drawdown</div>
+                <small class="text-muted">Within acceptable range</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card metric-card">
+            <div class="card-body text-center">
+                <div class="metric-icon text-info">
+                    <i class="fas fa-calculator"></i>
+                </div>
+                <div class="metric-value text-info" id="sharpe-ratio">1.87</div>
+                <div class="metric-label">Sharpe Ratio</div>
+                <small class="text-muted">Good risk-adjusted return</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>P&L Performance</h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="timeframe" id="7d" checked>
+                    <label class="btn btn-outline-primary" for="7d">7D</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="30d">
+                    <label class="btn btn-outline-primary" for="30d">30D</label>
+                    
+                    <input type="radio" class="btn-check" name="timeframe" id="90d">
+                    <label class="btn btn-outline-primary" for="90d">90D</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="pnlChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Trade Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="tradeDistributionChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Strategy Performance -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bullseye me-2"></i>Strategy Performance</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Strategy</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>P&L</th>
+                                <th>Avg Return</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-success">Scalping</span></td>
+                                <td>142</td>
+                                <td>78.2%</td>
+                                <td class="text-success">+$1,245</td>
+                                <td>+2.1%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-primary">Sniper</span></td>
+                                <td>89</td>
+                                <td>71.9%</td>
+                                <td class="text-success">+$2,156</td>
+                                <td>+4.3%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">Swing</span></td>
+                                <td>34</td>
+                                <td>73.5%</td>
+                                <td class="text-success">+$1,890</td>
+                                <td>+7.8%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Asset Performance</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Asset</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>P&L</th>
+                                <th>Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>BTC/USDT</strong></td>
+                                <td>98</td>
+                                <td>76.5%</td>
+                                <td class="text-success">+$2,341</td>
+                                <td>$45,230</td>
+                            </tr>
+                            <tr>
+                                <td><strong>ETH/USDT</strong></td>
+                                <td>87</td>
+                                <td>74.7%</td>
+                                <td class="text-success">+$1,876</td>
+                                <td>$38,920</td>
+                            </tr>
+                            <tr>
+                                <td><strong>BNB/USDT</strong></td>
+                                <td>54</td>
+                                <td>70.4%</td>
+                                <td class="text-success">+$1,234</td>
+                                <td>$22,150</td>
+                            </tr>
+                            <tr>
+                                <td><strong>ADA/USDT</strong></td>
+                                <td>26</td>
+                                <td>69.2%</td>
+                                <td class="text-success">+$840</td>
+                                <td>$12,680</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Risk Analysis -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Risk Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="risk-gauge" data-value="25">
+                                <canvas id="riskGauge" width="120" height="120"></canvas>
+                            </div>
+                            <h6 class="mt-2">Risk Score</h6>
+                            <span class="badge bg-success">Low Risk</span>
+                        </div>
+                    </div>
+                    <div class="col-md-9">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6>Value at Risk (VaR)</h6>
+                                <div class="metric-value text-warning">$1,250</div>
+                                <small class="text-muted">95% confidence, 1-day</small>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Expected Shortfall</h6>
+                                <div class="metric-value text-danger">$1,890</div>
+                                <small class="text-muted">Average loss beyond VaR</small>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Beta</h6>
+                                <div class="metric-value text-info">0.87</div>
+                                <small class="text-muted">Correlation with market</small>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-md-4">
+                                <h6>Volatility</h6>
+                                <div class="metric-value text-primary">12.4%</div>
+                                <small class="text-muted">Annualized</small>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Calmar Ratio</h6>
+                                <div class="metric-value text-success">2.1</div>
+                                <small class="text-muted">Return/Max Drawdown</small>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Sortino Ratio</h6>
+                                <div class="metric-value text-success">2.8</div>
+                                <small class="text-muted">Downside risk adjusted</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// P&L Chart
+const pnlCtx = document.getElementById('pnlChart').getContext('2d');
+const pnlChart = new Chart(pnlCtx, {
+    type: 'line',
+    data: {
+        labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+        datasets: [{
+            label: 'Cumulative P&L',
+            data: [0, 150, 280, 320, 450, 380, 520],
+            borderColor: '#28a745',
+            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value;
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+
+// Trade Distribution Chart
+const distributionCtx = document.getElementById('tradeDistributionChart').getContext('2d');
+const distributionChart = new Chart(distributionCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Scalping', 'Sniper', 'Swing'],
+        datasets: [{
+            data: [142, 89, 34],
+            backgroundColor: ['#28a745', '#007bff', '#ffc107'],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Risk Gauge
+function drawRiskGauge() {
+    const canvas = document.getElementById('riskGauge');
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = 45;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw background arc
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#e9ecef';
+    ctx.stroke();
+    
+    // Draw risk arc (25% = low risk)
+    const riskValue = 25;
+    const riskAngle = Math.PI + (Math.PI * riskValue / 100);
+    
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, riskAngle);
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#28a745'; // Green for low risk
+    ctx.stroke();
+    
+    // Draw center text
+    ctx.fillStyle = '#495057';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(riskValue + '%', centerX, centerY + 5);
+}
+
+drawRiskGauge();
+
+// Update charts based on timeframe selection
+document.querySelectorAll('input[name="timeframe"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        // Update chart data based on selected timeframe
+        updateChartData(this.id);
+    });
+});
+
+function updateChartData(timeframe) {
+    // Simulate different data for different timeframes
+    let newData, newLabels;
+    
+    switch(timeframe) {
+        case '7d':
+            newLabels = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'];
+            newData = [0, 150, 280, 320, 450, 380, 520];
+            break;
+        case '30d':
+            newLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+            newData = [0, 520, 1240, 1890];
+            break;
+        case '90d':
+            newLabels = ['Month 1', 'Month 2', 'Month 3'];
+            newData = [0, 1890, 3450];
+            break;
+    }
+    
+    pnlChart.data.labels = newLabels;
+    pnlChart.data.datasets[0].data = newData;
+    pnlChart.update();
+}
+</script>
+{% endblock %}

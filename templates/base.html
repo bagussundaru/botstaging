@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Trading Bot Dashboard{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
+    
+    {% block head %}{% endblock %}
+    
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #17a2b8;
+            --dark-color: #343a40;
+            --light-color: #f8f9fa;
+        }
+        
+        body {
+            background-color: #f4f6f9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: var(--primary-color) !important;
+        }
+        
+        .sidebar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            min-height: 100vh;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 12px 20px;
+            margin: 5px 0;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: white;
+            background-color: rgba(255,255,255,0.1);
+            transform: translateX(5px);
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            font-weight: 600;
+        }
+        
+        .metric-card {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        
+        .status-running {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .status-stopped {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .alert-item {
+            border-left: 4px solid var(--info-color);
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            background-color: white;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .alert-error {
+            border-left-color: var(--danger-color);
+        }
+        
+        .alert-success {
+            border-left-color: var(--success-color);
+        }
+        
+        .alert-warning {
+            border-left-color: var(--warning-color);
+        }
+        
+        .position-card {
+            border-left: 4px solid var(--info-color);
+            margin-bottom: 15px;
+        }
+        
+        .position-long {
+            border-left-color: var(--success-color);
+        }
+        
+        .position-short {
+            border-left-color: var(--danger-color);
+        }
+        
+        .btn-control {
+            border-radius: 25px;
+            padding: 8px 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            margin: 0 5px;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        .table-responsive {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .table th {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+        }
+        
+        .table td {
+            border: none;
+            padding: 15px 10px;
+            vertical-align: middle;
+        }
+        
+        .table tbody tr {
+            background-color: white;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.3s ease;
+        }
+        
+        .table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h4><i class="fas fa-robot me-2"></i>Trading Bot</h4>
+            <p class="mb-0 text-muted">Advanced Dashboard</p>
+        </div>
+        
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i>Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ 'active' if request.endpoint == 'analytics' else '' }}" href="{{ url_for('analytics') }}">
+                    <i class="fas fa-chart-bar"></i>Analytics
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ 'active' if request.endpoint == 'config' else '' }}" href="{{ url_for('config') }}">
+                    <i class="fas fa-cog"></i>Configuration
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {{ 'active' if request.endpoint == 'alerts_page' else '' }}" href="{{ url_for('alerts_page') }}">
+                    <i class="fas fa-bell"></i>Alerts History
+                </a>
+            </li>
+        </ul>
+        
+        <!-- Bot Controls -->
+        <div class="mt-auto p-3">
+            <div class="bot-status mb-3">
+                <div class="status-indicator active" id="status-indicator"></div>
+                <span id="bot-status">Active</span>
+            </div>
+            
+            <div class="d-grid gap-2">
+                <button class="btn btn-success btn-sm" id="startBot">
+                    <i class="fas fa-play me-1"></i>Start
+                </button>
+                <button class="btn btn-danger btn-sm" id="stopBot">
+                    <i class="fas fa-stop me-1"></i>Stop
+                </button>
+                <button class="btn btn-warning btn-sm" id="restartBot">
+                    <i class="fas fa-redo me-1"></i>Restart
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Header -->
+        <div class="header d-flex justify-content-between align-items-center">
+            <div>
+                <button class="btn btn-outline-secondary d-md-none" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <span class="ms-2">
+                    <i class="fas fa-clock me-1"></i>
+                    <span id="current-time"></span>
+                </span>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <button class="btn btn-outline-primary btn-sm" id="refreshData">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" id="themeToggle">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Page Content -->
+        <div class="container-fluid">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" style="display: none;">
+        <div class="d-flex justify-content-center align-items-center h-100">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>
