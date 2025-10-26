@@ -1,0 +1,401 @@
+//@version=5
+indicator("🎯 Conservative Scalper - 2% Target", overlay=true)
+
+// =====================
+// === CONSERVATIVE SCALPING PARAMETERS - OPTIMIZED FOR $65-70 CAPITAL
+// =====================
+
+// 1. Trend Filter - Balanced for Scalping
+trend_period = input.int(15, "EMA Trend Period", minval=5, maxval=50, group="Trend Filter")  // Faster for scalping
+trend_period_slow = input.int(30, "EMA Slow Period", minval=15, maxval=100, group="Trend Filter")  // Faster response
+trend_htf = input.timeframe("30", "Higher Timeframe", options=["15", "30", "1H", "4H"], group="Trend Filter")  // Shorter HTF for scalping
+
+// 2. RSI Oscillator - ULTRA AGGRESSIVE
+rsi_period = input.int(14, "RSI Period", minval=8, maxval=21, group="Momentum")
+rsi_oversold = input.int(15, "RSI Oversold Level", minval=5, maxval=40, group="Momentum")  // ULTRA LOW for maximum signals ⭐
+rsi_overbought = input.int(85, "RSI Overbought Level", minval=60, maxval=95, group="Momentum")  // ULTRA HIGH for maximum signals ⭐
+
+// 3. Support & Resistance Detection - SCALPING OPTIMIZED (VERY RELAXED)
+sr_lookback = input.int(12, "S&R Lookback Period", minval=8, maxval=25, group="Support/Resistance")  // SHORTER for more signals ⭐
+sr_tolerance_pct = input.float(0.25, "S&R Tolerance %", minval=0.05, maxval=0.5, step=0.01, group="Support/Resistance")  // MUCH WIDER tolerance ⭐
+min_touches = input.int(2, "Minimum Touches", minval=1, maxval=4, group="Support/Resistance")  // Keep at minimum ⭐
+pivot_left = input.int(5, "Pivot Left Bars", minval=3, maxval=10, group="Support & Resistance")  // Faster detection
+pivot_right = input.int(5, "Pivot Right Bars", minval=3, maxval=10, group="Support & Resistance")  // Faster detection
+n_div_lookback = input.int(10, "Divergence Lookback Bars", minval=5, maxval=20, group="Support & Resistance")  // Shorter for scalping
+
+// 4. CONSERVATIVE Risk Management - 2% TARGET
+atr_period = input.int(14, "ATR Period", minval=10, maxval=21, group="Risk Management")
+atr_sl_multiplier = input.float(1.2, "ATR SL Multiplier", minval=0.8, maxval=2.0, step=0.1, group="Risk Management")  // Tighter SL for scalping
+rr_target = input.float(2.0, "Risk Reward Target", minval=1.5, maxval=3.0, step=0.1, group="Risk Management")  // 2% TP target ⭐
+min_sl_pips = input.float(8, "Minimum SL (pips)", minval=5, maxval=20, step=0.5, group="Risk Management")  // Smaller for scalping
+
+// 5. SCALPING Confidence Weights - BALANCED
+w_trend = input.float(2.5, "Weight - Trend Alignment", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+w_mtf = input.float(2.0, "Weight - MTF Alignment", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+w_sr = input.float(2.5, "Weight - S&R Zone", minval=1, maxval=4, step=0.1, group="Confidence Weights")  // Important for scalping
+w_candle = input.float(1.8, "Weight - Price Action", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+w_rsi = input.float(1.5, "Weight - RSI Signal", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+w_div = input.float(0.5, "Weight - Divergence", minval=0.2, maxval=2, step=0.1, group="Confidence Weights")  // Less important for scalping
+w_volume = input.float(2.0, "Weight - Volume Confirmation", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+w_volatility = input.float(1.5, "Weight - Volatility Filter", minval=1, maxval=4, step=0.1, group="Confidence Weights")
+
+// 6. SCALPING Execution Settings - ULTRA AGGRESSIVE
+min_confidence = input.float(0.25, "Minimum Confidence Level", minval=0.1, maxval=0.8, step=0.01, group="Execution")  // ULTRA LOW for maximum signals ⭐
+high_confidence_threshold = input.float(0.50, "High Confidence Threshold", minval=0.3, maxval=0.9, step=0.01, group="Execution")
+alert_cooldown_bars = input.int(1, "Alert Cooldown Bars", minval=1, maxval=15, group="Execution")  // MINIMAL cooldown ⭐
+dynamic_cooldown = input.bool(false, "Dynamic Cooldown (High Conf = Longer)", group="Execution")  // Disabled for more signals
+allow_long = input.bool(true, "Allow Long Signals", group="Execution")
+allow_short = input.bool(true, "Allow Short Signals", group="Execution")
+use_dynamic_confidence = input.bool(true, "Use Dynamic Confidence For Alerts", group="Execution")
+
+// 7. Market Session Filter - DISABLED FOR TESTING
+enable_session_filter = input.bool(false, "Enable Market Session Filter", group="Market Session")  // DISABLED for maximum signals ⭐
+london_session = input.session("0800-1600", "London Session", group="Market Session")  // Extended hours
+ny_session = input.session("1300-2000", "New York Session", group="Market Session")  // Extended hours
+asia_session = input.session("0000-0800", "Asia Session", group="Market Session")  // Extended hours
+
+// 8. SCALPING Volume & Volatility Filters - ULTRA AGGRESSIVE
+volume_ma_period = input.int(15, "Volume MA Period", minval=10, maxval=30, group="Volume Filter")  // Shorter period
+volume_threshold = input.float(0.1, "Volume Threshold (x Average)", minval=0.1, maxval=3.0, step=0.1, group="Volume Filter")  // ULTRA LOW threshold ⭐
+atr_ma_period = input.int(14, "ATR MA Period", minval=10, maxval=30, group="Volatility Filter")
+volatility_threshold = input.float(0.1, "Volatility Threshold (x Average)", minval=0.1, maxval=2.0, step=0.1, group="Volatility Filter")  // ULTRA LOW threshold ⭐
+
+// 9. SCALPING Daily Signal Limits - DISABLED FOR TESTING
+max_daily_signals = input.int(50, "Max Daily Signals", minval=6, maxval=100, group="Risk Control")  // ULTRA HIGH for testing ⭐
+enable_signal_limit = input.bool(false, "Enable Daily Signal Limit", group="Risk Control")  // DISABLED for testing ⭐
+
+// 10. SCALPING Trend Strength & Quality - ULTRA AGGRESSIVE
+min_trend_strength = input.float(0.001, "Minimum Trend Strength", minval=0.0001, maxval=0.05, step=0.0001, group="Trend Quality")  // ULTRA LOW requirement ⭐
+min_ema_separation = input.float(0.0001, "Minimum EMA Separation %", minval=0.0001, maxval=0.02, step=0.0001, group="Trend Quality")  // ULTRA LOW requirement ⭐
+max_ranging_ratio = input.float(0.99, "Max Ranging Market Ratio", minval=0.5, maxval=1.0, step=0.01, group="Trend Quality")  // MAXIMUM tolerance ⭐
+
+// 11. SCALPING Anti-Ranging Filter - VERY RELAXED
+ranging_detection_period = input.int(12, "Ranging Detection Period", minval=5, maxval=30, group="Anti-Ranging")  // MUCH SHORTER period
+
+// 12. CAPITAL PROTECTION - CRITICAL FOR SMALL ACCOUNTS
+max_risk_per_trade = input.float(1.5, "Max Risk Per Trade (%)", minval=0.5, maxval=3.0, step=0.1, group="Capital Protection")  // Conservative ⭐
+min_account_balance = input.float(50.0, "Min Account Balance ($)", minval=20, maxval=100, step=5, group="Capital Protection")  // Safety net ⭐
+enable_balance_protection = input.bool(true, "Enable Balance Protection", group="Capital Protection")
+
+// 13. Display Settings
+show_ema = input.bool(true, "Show EMA Lines", group="Display")
+show_sr_zones = input.bool(true, "Show S&R Zones", group="Display")
+show_signals = input.bool(true, "Show Entry Signals", group="Display")
+show_debug = input.bool(false, "Show Debug Info", group="Display")  // Off by default for cleaner chart
+show_confidence_table = input.bool(true, "Show Confidence Table", group="Display")
+show_tp_sl_levels = input.bool(true, "Show TP/SL Levels", group="Display")  // New for scalping
+
+// =====================
+// === CORE INDICATORS
+// =====================
+
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+[close_htf, ema_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period)])
+
+rsi = ta.rsi(close, rsi_period)
+atr = ta.atr(atr_period)
+
+// Enhanced Volume & Volatility
+volume_ma = ta.sma(volume, volume_ma_period)
+volume_ratio = volume / volume_ma
+atr_ma = ta.sma(atr, atr_ma_period)
+volatility_ratio = atr / atr_ma
+
+// Market Session Detection
+in_london = not na(time(timeframe.period, london_session))
+in_ny = not na(time(timeframe.period, ny_session))
+in_asia = not na(time(timeframe.period, asia_session))
+in_active_session = in_london or in_ny or in_asia
+
+// =====================
+// === SCALPING ANTI-RANGING FILTER
+// =====================
+
+highest_high = ta.highest(high, ranging_detection_period)
+lowest_low = ta.lowest(low, ranging_detection_period)
+range_size = highest_high - lowest_low
+current_price_position = (close - lowest_low) / range_size
+
+// More tolerant ranging detection for scalping
+is_ranging = current_price_position > 0.25 and current_price_position < 0.75 and range_size / close < max_ranging_ratio
+
+// =====================
+// === SCALPING TREND ANALYSIS
+// =====================
+
+is_uptrend = ema_fast > ema_slow and close > ema_fast
+is_downtrend = ema_fast < ema_slow and close < ema_fast
+htf_uptrend = close_htf > ema_htf
+htf_downtrend = close_htf < ema_htf
+
+// Relaxed Trend Strength for Scalping
+trend_strength = math.abs(ema_fast - ema_slow) / ema_slow
+ema_separation = math.abs(ema_fast - ema_slow) / close
+strong_trend = trend_strength >= min_trend_strength and ema_separation >= min_ema_separation
+
+// Multi-timeframe trend confirmation (more flexible)
+trend_alignment_bull = is_uptrend and (htf_uptrend or strong_trend)  // Either HTF OR strong trend
+trend_alignment_bear = is_downtrend and (htf_downtrend or strong_trend)  // Either HTF OR strong trend
+
+// =====================
+// === SUPPORT & RESISTANCE (Scalping Optimized)
+// =====================
+
+pivot_high = ta.pivothigh(high, pivot_left, pivot_right)
+pivot_low = ta.pivotlow(low, pivot_left, pivot_right)
+
+var float[] resistance_levels = array.new_float()
+var float[] support_levels = array.new_float()
+
+if not na(pivot_high)
+    if array.size(resistance_levels) >= 5  // More levels for scalping
+        array.shift(resistance_levels)
+    array.push(resistance_levels, pivot_high)
+
+if not na(pivot_low)
+    if array.size(support_levels) >= 5  // More levels for scalping
+        array.shift(support_levels)
+    array.push(support_levels, pivot_low)
+
+get_nearest_resistance() =>
+    float nearest = na
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            level = array.get(resistance_levels, i)
+            if level > close and (na(nearest) or level < nearest)
+                nearest := level
+    nearest
+
+get_nearest_support() =>
+    float nearest = na
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            level = array.get(support_levels, i)
+            if level < close and (na(nearest) or level > nearest)
+                nearest := level
+    nearest
+
+nearest_resistance = get_nearest_resistance()
+nearest_support = get_nearest_support()
+
+// Wider S&R Zone for Scalping
+is_at_support = not na(nearest_support) and math.abs(close - nearest_support) / close <= sr_tolerance_pct
+is_at_resistance = not na(nearest_resistance) and math.abs(close - nearest_resistance) / close <= sr_tolerance_pct
+
+// =====================
+// === SCALPING CANDLESTICK PATTERNS (Relaxed)
+// =====================
+
+is_doji = math.abs(close - open) <= (high - low) * 0.12  // More tolerant
+is_hammer = (close > open) and ((high - close) <= 2 * (close - open)) and ((open - low) >= 2 * (close - open))
+is_shooting_star = (open > close) and ((close - low) <= 2 * (open - close)) and ((high - open) >= 2 * (open - close))
+is_bullish_engulfing = (close > open) and (close[1] < open[1]) and (close > open[1]) and (open < close[1])
+is_bearish_engulfing = (open > close) and (open[1] < close[1]) and (open > close[1]) and (close < open[1])
+
+bullish_candle = is_hammer or is_bullish_engulfing or (close > open and (close - open) > (high - low) * 0.6)
+bearish_candle = is_shooting_star or is_bearish_engulfing or (open > close and (open - close) > (high - low) * 0.6)
+
+// =====================
+// === SCALPING CONFIDENCE CALCULATION
+// =====================
+
+// Individual component scores (0-1)
+trend_score = trend_alignment_bull or trend_alignment_bear ? 1.0 : 0.0
+mtf_score = (htf_uptrend and is_uptrend) or (htf_downtrend and is_downtrend) ? 1.0 : 0.5
+sr_score = is_at_support or is_at_resistance ? 1.0 : 0.0
+candle_score = bullish_candle or bearish_candle ? 1.0 : 0.0
+rsi_score_long = rsi <= rsi_oversold ? 1.0 : (rsi <= 45 ? 0.5 : 0.0)
+rsi_score_short = rsi >= rsi_overbought ? 1.0 : (rsi >= 55 ? 0.5 : 0.0)
+volume_score = volume_ratio >= volume_threshold ? 1.0 : (volume_ratio >= 1.0 ? 0.5 : 0.0)
+volatility_score = volatility_ratio >= volatility_threshold ? 1.0 : (volatility_ratio >= 0.8 ? 0.5 : 0.0)
+
+// Calculate weighted confidence
+total_weight = w_trend + w_mtf + w_sr + w_candle + w_rsi + w_volume + w_volatility
+
+confidence_long = (trend_score * w_trend + mtf_score * w_mtf + sr_score * w_sr + 
+                  candle_score * w_candle + rsi_score_long * w_rsi + 
+                  volume_score * w_volume + volatility_score * w_volatility) / total_weight
+
+confidence_short = (trend_score * w_trend + mtf_score * w_mtf + sr_score * w_sr + 
+                   candle_score * w_candle + rsi_score_short * w_rsi + 
+                   volume_score * w_volume + volatility_score * w_volatility) / total_weight
+
+// =====================
+// === SCALPING ENTRY CONDITIONS
+// =====================
+
+// Session Filter
+session_ok = enable_session_filter ? in_active_session : true
+
+// Enhanced Volume Filter (more lenient)
+volume_ok = volume_ratio >= volume_threshold or volume_ratio >= 1.0
+
+// Enhanced Volatility Filter (more lenient)
+volatility_ok = volatility_ratio >= volatility_threshold or volatility_ratio >= 0.8
+
+// Scalping RSI Filter (ultra flexible)
+rsi_long_ok = rsi <= rsi_oversold or (rsi <= 60 and trend_alignment_bull) or (rsi >= 30 and rsi <= 70)  // Very wide range
+rsi_short_ok = rsi >= rsi_overbought or (rsi >= 40 and trend_alignment_bear) or (rsi >= 30 and rsi <= 70)  // Very wide range
+
+// Anti-ranging filter (more tolerant)
+not_ranging = not is_ranging or strong_trend
+
+// Cooldown tracking
+var int last_long_bar = na
+var int last_short_bar = na
+var int last_any_signal_bar = na
+
+// Daily signal counter
+var int daily_signal_count = 0
+
+// Reset daily counter
+if dayofweek != dayofweek[1]
+    daily_signal_count := 0
+
+// Check daily limit
+daily_limit_ok = enable_signal_limit ? daily_signal_count < max_daily_signals : true
+
+// Dynamic cooldown for scalping
+high_conf_cooldown = dynamic_cooldown ? alert_cooldown_bars + 4 : alert_cooldown_bars
+current_cooldown = confidence_long >= high_confidence_threshold or confidence_short >= high_confidence_threshold ? 
+                  high_conf_cooldown : alert_cooldown_bars
+
+// Cooldown checks
+long_cooldown_ok = na(last_long_bar) or (bar_index - last_long_bar) >= current_cooldown
+short_cooldown_ok = na(last_short_bar) or (bar_index - last_short_bar) >= current_cooldown
+any_signal_cooldown_ok = na(last_any_signal_bar) or (bar_index - last_any_signal_bar) >= current_cooldown
+
+// SCALPING Entry Conditions (More Flexible)
+long_entry_ready = allow_long and 
+                  trend_alignment_bull and
+                  session_ok and 
+                  volume_ok and 
+                  volatility_ok and 
+                  rsi_long_ok and
+                  not_ranging and
+                  long_cooldown_ok and 
+                  any_signal_cooldown_ok and
+                  daily_limit_ok and
+                  confidence_long >= min_confidence
+
+short_entry_ready = allow_short and 
+                   trend_alignment_bear and
+                   session_ok and 
+                   volume_ok and 
+                   volatility_ok and 
+                   rsi_short_ok and
+                   not_ranging and
+                   short_cooldown_ok and 
+                   any_signal_cooldown_ok and
+                   daily_limit_ok and
+                   confidence_short >= min_confidence
+
+// Final signal generation
+long_signal_final = long_entry_ready
+short_signal_final = short_entry_ready
+
+// Update tracking variables
+if long_signal_final
+    last_long_bar := bar_index
+    last_any_signal_bar := bar_index
+    daily_signal_count += 1
+
+if short_signal_final
+    last_short_bar := bar_index
+    last_any_signal_bar := bar_index
+    daily_signal_count += 1
+
+// =====================
+// === TP/SL CALCULATION FOR 2% TARGET
+// =====================
+
+// Calculate TP/SL levels for current signals
+var float current_entry_price = na
+var float current_sl_price = na
+var float current_tp_price = na
+
+if long_signal_final
+    current_entry_price := close
+    sl_distance = math.max(atr * atr_sl_multiplier, min_sl_pips * syminfo.mintick * 10)
+    current_sl_price := close - sl_distance
+    current_tp_price := close + (sl_distance * rr_target)  // 2:1 RR for 2% target
+
+if short_signal_final
+    current_entry_price := close
+    sl_distance = math.max(atr * atr_sl_multiplier, min_sl_pips * syminfo.mintick * 10)
+    current_sl_price := close + sl_distance
+    current_tp_price := close - (sl_distance * rr_target)  // 2:1 RR for 2% target
+
+// =====================
+// === ALERTS
+// =====================
+
+alertcondition(long_signal_final, title="🟢 SCALP BUY - 2% Target", 
+              message='{"action": "BUY", "symbol": "{{ticker}}", "price": {{close}}, "token": "sniper-bybit-production-2024"}')
+
+alertcondition(short_signal_final, title="🔴 SCALP SELL - 2% Target", 
+              message='{"action": "SELL", "symbol": "{{ticker}}", "price": {{close}}, "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+// EMA Lines
+plot(show_ema ? ema_fast : na, "EMA Fast", color=color.blue, linewidth=1)
+plot(show_ema ? ema_slow : na, "EMA Slow", color=color.red, linewidth=1)
+
+// Support & Resistance Zones
+plot(show_sr_zones and not na(nearest_resistance) ? nearest_resistance : na, "Resistance", color=color.red, style=plot.style_stepline, linewidth=1)
+plot(show_sr_zones and not na(nearest_support) ? nearest_support : na, "Support", color=color.green, style=plot.style_stepline, linewidth=1)
+
+// Entry Signals
+plotshape(show_signals and long_signal_final, title="Scalp Long", location=location.belowbar, style=shape.triangleup, size=size.normal, color=color.lime)
+plotshape(show_signals and short_signal_final, title="Scalp Short", location=location.abovebar, style=shape.triangledown, size=size.normal, color=color.red)
+
+// TP/SL Levels
+plot(show_tp_sl_levels and not na(current_tp_price) ? current_tp_price : na, "Take Profit", color=color.green, style=plot.style_circles, linewidth=2)
+plot(show_tp_sl_levels and not na(current_sl_price) ? current_sl_price : na, "Stop Loss", color=color.red, style=plot.style_circles, linewidth=2)
+
+// Signal Labels with Confidence
+if show_signals and long_signal_final
+    label.new(bar_index, low - atr, "🎯 SCALP BUY\nConf: " + str.tostring(confidence_long, "#.##") + "\nTP: 2%", 
+              color=color.lime, textcolor=color.black, style=label.style_label_up, size=size.small)
+
+if show_signals and short_signal_final
+    label.new(bar_index, high + atr, "🎯 SCALP SELL\nConf: " + str.tostring(confidence_short, "#.##") + "\nTP: 2%", 
+              color=color.red, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// Background for ranging markets
+bgcolor(is_ranging ? color.new(color.gray, 95) : na, title="Ranging Market")
+
+// =====================
+// === CONFIDENCE TABLE
+// =====================
+
+if show_confidence_table and barstate.islast
+    var table conf_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1)
+    
+    table.cell(conf_table, 0, 0, "SCALPING METRICS", text_color=color.white, bgcolor=color.blue)
+    table.cell(conf_table, 1, 0, "VALUE", text_color=color.white, bgcolor=color.blue)
+    
+    table.cell(conf_table, 0, 1, "Long Confidence", text_color=color.black)
+    table.cell(conf_table, 1, 1, str.tostring(confidence_long, "#.##"), text_color=confidence_long >= min_confidence ? color.green : color.red)
+    
+    table.cell(conf_table, 0, 2, "Short Confidence", text_color=color.black)
+    table.cell(conf_table, 1, 2, str.tostring(confidence_short, "#.##"), text_color=confidence_short >= min_confidence ? color.green : color.red)
+    
+    table.cell(conf_table, 0, 3, "Daily Signals", text_color=color.black)
+    table.cell(conf_table, 1, 3, str.tostring(daily_signal_count) + "/" + str.tostring(max_daily_signals), text_color=color.black)
+    
+    table.cell(conf_table, 0, 4, "Volume Ratio", text_color=color.black)
+    table.cell(conf_table, 1, 4, str.tostring(volume_ratio, "#.##"), text_color=volume_ok ? color.green : color.red)
+    
+    table.cell(conf_table, 0, 5, "RSI", text_color=color.black)
+    table.cell(conf_table, 1, 5, str.tostring(rsi, "#.#"), text_color=color.black)
+    
+    table.cell(conf_table, 0, 6, "Trend Strength", text_color=color.black)
+    table.cell(conf_table, 1, 6, str.tostring(trend_strength * 100, "#.##") + "%", text_color=strong_trend ? color.green : color.red)
+    
+    table.cell(conf_table, 0, 7, "Target: 2% TP", text_color=color.white, bgcolor=color.green)
+    table.cell(conf_table, 1, 7, "RR: 1:2", text_color=color.white, bgcolor=color.green)

@@ -1,0 +1,269 @@
+//@version=5
+strategy("🎯 Sniper DAILY TRADER v1.0 - $66 Optimized", shorttitle="SniperDaily", overlay=true, 
+         initial_capital=66, default_qty_type=strategy.percent_of_equity, default_qty_value=15,
+         commission_type=strategy.commission.percent, commission_value=0.075,
+         slippage=2, calc_on_every_tick=false, calc_on_order_fills=true,
+         pyramiding=0, close_entries_rule="ANY", max_bars_back=500)
+
+// =====================================================
+// === DAILY TRADER OPTIMIZED CONFIGURATION ($66) ===
+// =====================================================
+
+// 🎯 DAILY TRADER PARAMETERS (Optimized for High Frequency)
+group_daily = "🎯 DAILY TRADER SETTINGS"
+confidence_threshold = input.float(0.55, "Confidence Threshold", minval=0.3, maxval=0.8, step=0.05, group=group_daily, tooltip="Lower = More Signals (Daily Trading Optimized)")
+tp_ratio = input.float(1.1, "Take Profit Ratio", minval=0.8, maxval=1.5, step=0.1, group=group_daily, tooltip="Quick TP for Daily Trading")
+risk_per_trade = input.float(1.5, "Risk Per Trade (%)", minval=1.0, maxval=3.0, step=0.1, group=group_daily, tooltip="Conservative for $66 Capital")
+
+// 📊 TIMEFRAME SETTINGS (15M Primary + 1H Confirmation)
+group_tf = "📊 TIMEFRAME SETTINGS"
+primary_tf = input.timeframe("15", "Primary Timeframe", group=group_tf)
+confirm_tf = input.timeframe("60", "Confirmation Timeframe", group=group_tf)
+use_htf_confirmation = input.bool(true, "Use Higher TF Confirmation", group=group_tf)
+
+// 🛡️ ULTRA-CONSERVATIVE RISK MANAGEMENT ($66 Capital)
+group_risk = "🛡️ RISK MANAGEMENT ($66 Capital)"
+daily_loss_limit = input.float(5.0, "Daily Loss Limit (%)", minval=3.0, maxval=10.0, step=0.5, group=group_risk, tooltip="Max $3.30 loss per day")
+max_trades_per_day = input.int(8, "Max Trades Per Day", minval=3, maxval=15, step=1, group=group_risk, tooltip="Prevent overtrading")
+cooldown_minutes = input.int(30, "Cooldown Between Trades (min)", minval=15, maxval=120, step=15, group=group_risk)
+
+// 🎯 AUTOMATION SETTINGS
+group_auto = "🤖 AUTOMATION SETTINGS"
+enable_automation = input.bool(true, "Enable Full Automation", group=group_auto)
+session_filter = input.session("0800-2000", "Trading Session", group=group_auto, tooltip="Active trading hours")
+enable_session_filter = input.bool(true, "Use Session Filter", group=group_auto)
+
+// =====================================================
+// === CORE INDICATORS (Optimized for 15M) ===
+// =====================================================
+
+// 📈 EMA Settings (Faster for Daily Trading)
+ema_fast = ta.ema(close, 8)   // Faster response
+ema_slow = ta.ema(close, 21)  // Quick trend detection
+ema_htf = request.security(syminfo.tickerid, confirm_tf, ta.ema(close, 21))
+
+// 📊 RSI (Optimized for Scalping)
+rsi = ta.rsi(close, 12)  // Faster RSI for daily trading
+rsi_htf = request.security(syminfo.tickerid, confirm_tf, ta.rsi(close, 14))
+
+// 📏 ATR (Dynamic SL/TP)
+atr = ta.atr(14)
+atr_multiplier = 1.8  // Tighter stops for daily trading
+
+// 📊 Volume Analysis (Quick Response)
+volume_ma = ta.sma(volume, 10)  // Shorter period
+volume_ratio = volume / volume_ma
+high_volume = volume_ratio > 1.3
+
+// 💹 VWAP (Intraday Reference)
+vwap = ta.vwap(hlc3)
+price_vs_vwap = (close - vwap) / vwap * 100
+
+// =====================================================
+// === DAILY TRADER LOGIC (High Frequency) ===
+// =====================================================
+
+// 🎯 Market Regime Detection (Simplified for Speed)
+trend_strength = math.abs(ema_fast - ema_slow) / atr
+is_trending = trend_strength > 0.5
+is_ranging = trend_strength <= 0.5
+
+// 📊 Quick Momentum Detection
+momentum_bull = ema_fast > ema_slow and close > ema_fast
+momentum_bear = ema_fast < ema_slow and close < ema_fast
+
+// 🔍 RSI Conditions (Relaxed for More Signals)
+rsi_oversold = rsi < 35  // Less extreme
+rsi_overbought = rsi > 65  // Less extreme
+rsi_neutral = rsi >= 35 and rsi <= 65
+
+// =====================================================
+// === CONFIDENCE SCORING (Daily Trading Optimized) ===
+// =====================================================
+
+// 🎯 Base Confidence Calculation
+base_confidence = 0.0
+
+// Trend Component (40% weight)
+trend_score = 0.0
+if momentum_bull
+    trend_score := 0.4
+else if momentum_bear
+    trend_score := 0.4
+
+// RSI Component (25% weight)
+rsi_score = 0.0
+if (momentum_bull and rsi_oversold) or (momentum_bear and rsi_overbought)
+    rsi_score := 0.25
+else if rsi_neutral
+    rsi_score := 0.15
+
+// Volume Component (20% weight)
+volume_score = high_volume ? 0.20 : 0.10
+
+// VWAP Component (15% weight)
+vwap_score = 0.0
+if (momentum_bull and close > vwap) or (momentum_bear and close < vwap)
+    vwap_score := 0.15
+else
+    vwap_score := 0.05
+
+// Higher Timeframe Confirmation (Bonus)
+htf_bonus = 0.0
+if use_htf_confirmation
+    htf_trend_bull = ema_htf > ema_htf[1] and rsi_htf < 70
+    htf_trend_bear = ema_htf < ema_htf[1] and rsi_htf > 30
+    
+    if (momentum_bull and htf_trend_bull) or (momentum_bear and htf_trend_bear)
+        htf_bonus := 0.10
+
+// Final Confidence Score
+confidence_bull = momentum_bull ? trend_score + rsi_score + volume_score + vwap_score + htf_bonus : 0.0
+confidence_bear = momentum_bear ? trend_score + rsi_score + volume_score + vwap_score + htf_bonus : 0.0
+
+// =====================================================
+// === DAILY TRADING FILTERS ===
+// =====================================================
+
+// 🕐 Session Filter
+in_session = not enable_session_filter or time(timeframe.period, session_filter)
+
+// 🔄 Cooldown Filter (Prevent Overtrading)
+var float last_trade_time = na
+time_since_last_trade = time - last_trade_time
+cooldown_ok = na(last_trade_time) or time_since_last_trade >= cooldown_minutes * 60 * 1000
+
+// 📊 Daily Trade Counter
+var int daily_trades = 0
+var int last_day = 0
+current_day = dayofweek
+if current_day != last_day
+    daily_trades := 0
+    last_day := current_day
+
+trade_limit_ok = daily_trades < max_trades_per_day
+
+// 💰 Daily Loss Check
+var float daily_pnl = 0.0
+if current_day != last_day
+    daily_pnl := 0.0
+
+daily_loss_ok = daily_pnl > -(strategy.initial_capital * daily_loss_limit / 100)
+
+// =====================================================
+// === ENTRY CONDITIONS (High Frequency) ===
+// =====================================================
+
+// 🎯 Long Entry Conditions
+long_entry_conditions = momentum_bull and confidence_bull >= confidence_threshold and in_session and cooldown_ok and trade_limit_ok and daily_loss_ok and strategy.position_size == 0
+
+// 🎯 Short Entry Conditions  
+short_entry_conditions = momentum_bear and confidence_bear >= confidence_threshold and in_session and cooldown_ok and trade_limit_ok and daily_loss_ok and strategy.position_size == 0
+
+// =====================================================
+// === POSITION SIZING (Conservative for $66) ===
+// =====================================================
+
+// 💰 Dynamic Position Sizing
+account_balance = strategy.initial_capital + strategy.netprofit
+risk_amount = account_balance * risk_per_trade / 100
+stop_distance = atr * atr_multiplier
+position_size = risk_amount / stop_distance
+
+// Minimum position size check (Bybit minimum)
+min_position = 0.001  // Minimum ETHUSDT position
+final_position_size = math.max(position_size, min_position)
+
+// =====================================================
+// === TRADE EXECUTION ===
+// =====================================================
+
+// 📈 Long Entry
+if long_entry_conditions
+    strategy.entry("LONG", strategy.long, qty=final_position_size)
+    last_trade_time := time
+    daily_trades := daily_trades + 1
+
+// 📉 Short Entry
+if short_entry_conditions
+    strategy.entry("SHORT", strategy.short, qty=final_position_size)
+    last_trade_time := time
+    daily_trades := daily_trades + 1
+
+// =====================================================
+// === EXIT STRATEGY (Quick Profits) ===
+// =====================================================
+
+// 🎯 Take Profit & Stop Loss
+if strategy.position_size > 0  // Long position
+    tp_price = strategy.position_avg_price * (1 + (atr * atr_multiplier * tp_ratio) / strategy.position_avg_price)
+    sl_price = strategy.position_avg_price * (1 - (atr * atr_multiplier) / strategy.position_avg_price)
+    
+    strategy.exit("TP/SL LONG", "LONG", limit=tp_price, stop=sl_price)
+
+if strategy.position_size < 0  // Short position
+    tp_price = strategy.position_avg_price * (1 - (atr * atr_multiplier * tp_ratio) / strategy.position_avg_price)
+    sl_price = strategy.position_avg_price * (1 + (atr * atr_multiplier) / strategy.position_avg_price)
+    
+    strategy.exit("TP/SL SHORT", "SHORT", limit=tp_price, stop=sl_price)
+
+// 🚨 Emergency Exit (Daily Loss Limit)
+if not daily_loss_ok and strategy.position_size != 0
+    strategy.close_all(comment="DAILY LOSS LIMIT")
+
+// =====================================================
+// === VISUALIZATION (Minimal for Performance) ===
+// =====================================================
+
+// 📊 EMA Lines
+plot(ema_fast, "EMA Fast", color=color.blue, linewidth=1)
+plot(ema_slow, "EMA Slow", color=color.red, linewidth=1)
+plot(ema_htf, "EMA HTF", color=color.orange, linewidth=2)
+
+// 💹 VWAP
+plot(vwap, "VWAP", color=color.purple, linewidth=1)
+
+// 🎯 Entry Signals
+plotshape(long_entry_conditions, title="🚀 LONG", location=location.belowbar, color=color.lime, style=shape.triangleup, size=size.small)
+plotshape(short_entry_conditions, title="🔻 SHORT", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
+
+// 📊 Info Table (Compact)
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.white, border_width=1)
+    
+    table.cell(info_table, 0, 0, "Daily Trades", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 0, str.tostring(daily_trades) + "/" + str.tostring(max_trades_per_day), text_color=color.blue, text_size=size.small)
+    
+    table.cell(info_table, 0, 1, "Confidence", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 1, str.tostring(math.max(confidence_bull, confidence_bear), "#.##"), text_color=confidence_bull >= confidence_threshold or confidence_bear >= confidence_threshold ? color.green : color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 2, "Daily P&L", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 2, "$" + str.tostring(daily_pnl, "#.##"), text_color=daily_pnl >= 0 ? color.green : color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 3, "Risk/Trade", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 3, str.tostring(risk_per_trade) + "%", text_color=color.blue, text_size=size.small)
+    
+    table.cell(info_table, 0, 4, "Session", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 4, in_session ? "ACTIVE" : "CLOSED", text_color=in_session ? color.green : color.red, text_size=size.small)
+
+// =====================================================
+// === AUTOMATION ALERTS ===
+// =====================================================
+
+// 🚀 Long Alert
+alertcondition(long_entry_conditions, title="🚀 Daily Trader LONG Entry", message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "timestamp": "{{time}}", "strategy": "Daily Trader v1.0", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// 🔻 Short Alert
+alertcondition(short_entry_conditions, title="🔻 Daily Trader SHORT Entry", message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "timestamp": "{{time}}", "strategy": "Daily Trader v1.0", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// =====================================================
+// === PERFORMANCE TRACKING ===
+// =====================================================
+
+// Update daily P&L
+if strategy.closedtrades > strategy.closedtrades[1]
+    daily_pnl := daily_pnl + (strategy.closedtrades.exit_price(strategy.closedtrades - 1) - strategy.closedtrades.entry_price(strategy.closedtrades - 1)) * strategy.closedtrades.size(strategy.closedtrades - 1)
+
+// =====================================================
+// === END OF DAILY TRADER STRATEGY v1.0 ===
+// =====================================================

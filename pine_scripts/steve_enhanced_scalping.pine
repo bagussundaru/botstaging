@@ -1,0 +1,488 @@
+//@version=5
+indicator("Steve Enhanced Scalping - Ultimate Signal Quality", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// =====================
+// === ENHANCED SCALPING PARAMETERS (Based on Steve.pine Best Practices)
+// =====================
+
+// 1. Multi-Timeframe Trend Analysis (From Steve.pine)
+trend_period = input.int(20, "EMA Fast Period", minval=5, maxval=50, group="Trend Analysis")
+trend_period_slow = input.int(60, "EMA Slow Period", minval=20, maxval=100, group="Trend Analysis")
+trend_htf = input.timeframe("15", "Higher Timeframe for Trend", group="Trend Analysis")
+
+// 2. Enhanced RSI & Multi-Oscillator Suite (From Steve.pine)
+rsi_period = input.int(14, "RSI Period", minval=5, maxval=21, group="Momentum Oscillators")
+stoch_period = input.int(14, "Stochastic Period", minval=5, maxval=21, group="Momentum Oscillators")
+williams_period = input.int(14, "Williams %R Period", minval=5, maxval=21, group="Momentum Oscillators")
+rsi_oversold = input.int(25, "RSI Oversold (Scalping)", minval=15, maxval=35, group="Momentum Oscillators")
+rsi_overbought = input.int(75, "RSI Overbought (Scalping)", minval=65, maxval=85, group="Momentum Oscillators")
+
+// 3. Support & Resistance Detection (Optimized for Scalping)
+pivot_left = input.int(3, "Pivot Left Bars (Scalping)", minval=1, maxval=10, group="Support & Resistance")
+pivot_right = input.int(3, "Pivot Right Bars (Scalping)", minval=1, maxval=10, group="Support & Resistance")
+sr_tolerance_pct = input.float(0.25, "S&R Zone Tolerance (%)", minval=0.1, maxval=1.0, step=0.05, group="Support & Resistance")
+sr_lookback = input.int(12, "S&R Lookback Period", minval=5, maxval=20, group="Support & Resistance")
+
+// 4. Volume & VWAP Analysis (From Steve.pine)
+volume_threshold = input.float(0.1, "Volume Threshold (Ultra Low)", minval=0.1, maxval=2.0, step=0.1, group="Volume Analysis")
+volume_sma_period = input.int(20, "Volume SMA Period", minval=10, maxval=50, group="Volume Analysis")
+
+// 5. Enhanced Confidence Scoring (Steve.pine Method)
+w_trend = input.float(0.25, "Weight - Trend Analysis", minval=0, maxval=1, step=0.05, group="Confidence Weights")
+w_momentum = input.float(0.30, "Weight - Momentum Confluence", minval=0, maxval=1, step=0.05, group="Confidence Weights")
+w_structure = input.float(0.20, "Weight - Market Structure", minval=0, maxval=1, step=0.05, group="Confidence Weights")
+w_volume = input.float(0.15, "Weight - Volume Analysis", minval=0, maxval=1, step=0.05, group="Confidence Weights")
+w_divergence = input.float(0.10, "Weight - Divergence", minval=0, maxval=1, step=0.05, group="Confidence Weights")
+
+// 6. Scalping Execution Settings (Ultra Aggressive)
+min_confidence = input.float(0.25, "Minimum Confidence Level", minval=0.1, maxval=0.8, step=0.05, group="Scalping Execution")
+high_confidence_threshold = input.float(0.50, "High Confidence Threshold", minval=0.3, maxval=0.9, step=0.05, group="Scalping Execution")
+alert_cooldown_bars = input.int(1, "Alert Cooldown Bars", minval=1, maxval=10, group="Scalping Execution")
+max_daily_signals = input.int(50, "Max Daily Signals", minval=10, maxval=100, group="Scalping Execution")
+enable_signal_limit = input.bool(false, "Enable Signal Limit", group="Scalping Execution")
+
+// 7. Volatility & Market Condition Filters
+volatility_threshold = input.float(0.1, "Volatility Threshold (Ultra Low)", minval=0.1, maxval=2.0, step=0.1, group="Market Conditions")
+atr_period = input.int(14, "ATR Period", minval=5, maxval=21, group="Market Conditions")
+min_trend_strength = input.float(0.001, "Min Trend Strength", minval=0.0001, maxval=0.01, step=0.0001, group="Market Conditions")
+min_ema_separation = input.float(0.0001, "Min EMA Separation", minval=0.0001, maxval=0.01, step=0.0001, group="Market Conditions")
+max_ranging_ratio = input.float(0.99, "Max Ranging Ratio", minval=0.5, maxval=0.99, step=0.01, group="Market Conditions")
+
+// 8. Session & Time Filters
+enable_session_filter = input.bool(false, "Enable Session Filter", group="Time Filters")
+session_start = input.session("0800-1600", "Trading Session", group="Time Filters")
+
+// 9. Display Settings
+show_confidence_table = input.bool(true, "Show Confidence Table", group="Display")
+show_signals = input.bool(true, "Show Entry Signals", group="Display")
+show_sr_zones = input.bool(true, "Show S&R Zones", group="Display")
+show_ema_lines = input.bool(true, "Show EMA Lines", group="Display")
+
+// =====================
+// === CORE INDICATORS (Steve.pine Enhanced)
+// =====================
+
+// Moving Averages
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+
+// Higher Timeframe Analysis
+[close_htf, ema_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period)])
+
+// Multi-Oscillator Suite (From Steve.pine)
+rsi = ta.rsi(close, rsi_period)
+rsi_prev = ta.rsi(close[1], rsi_period)
+stoch_k = ta.stoch(close, high, low, stoch_period)
+stoch_d = ta.sma(stoch_k, 3)
+williams_r = ta.wpr(williams_period)
+[macd_line, signal_line, macd_histogram] = ta.macd(close, 12, 26, 9)
+
+// Volume & VWAP Analysis
+vwap = ta.vwap(hlc3)
+volume_sma = ta.sma(volume, volume_sma_period)
+volume_ratio = volume / volume_sma
+is_high_volume = volume_ratio > volume_threshold
+
+// ATR for Volatility
+atr = ta.atr(atr_period)
+atr_sma = ta.sma(atr, atr_period)
+volatility_ratio = atr / atr_sma
+
+// =====================
+// === SUPPORT & RESISTANCE (Scalping Optimized)
+// =====================
+
+// Pivot Detection
+pivot_high = ta.pivothigh(high, pivot_left, pivot_right)
+pivot_low = ta.pivotlow(low, pivot_left, pivot_right)
+
+// Store S&R levels
+var float[] resistance_levels = array.new_float()
+var float[] support_levels = array.new_float()
+
+if not na(pivot_high)
+    if array.size(resistance_levels) >= 3
+        array.shift(resistance_levels)
+    array.push(resistance_levels, pivot_high)
+
+if not na(pivot_low)
+    if array.size(support_levels) >= 3
+        array.shift(support_levels)
+    array.push(support_levels, pivot_low)
+
+// Find nearest S&R levels
+get_nearest_resistance() =>
+    float nearest = na
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            level = array.get(resistance_levels, i)
+            if level > close and (na(nearest) or level < nearest)
+                nearest := level
+    nearest
+
+get_nearest_support() =>
+    float nearest = na
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            level = array.get(support_levels, i)
+            if level < close and (na(nearest) or level > nearest)
+                nearest := level
+    nearest
+
+nearest_resistance = get_nearest_resistance()
+nearest_support = get_nearest_support()
+
+// S&R Zone Detection
+is_at_support = not na(nearest_support) and close <= (nearest_support * (1 + sr_tolerance_pct/100)) and close >= (nearest_support * (1 - sr_tolerance_pct/100))
+is_at_resistance = not na(nearest_resistance) and close >= (nearest_resistance * (1 - sr_tolerance_pct/100)) and close <= (nearest_resistance * (1 + sr_tolerance_pct/100))
+
+// =====================
+// === PRICE ACTION PATTERNS (Steve.pine Method)
+// =====================
+
+// Candlestick Analysis
+body_size = math.abs(close - open)
+upper_wick = high - math.max(close, open)
+lower_wick = math.min(close, open) - low
+total_range = high - low
+
+// Pattern Detection
+is_doji = body_size <= (total_range * 0.1) and total_range > 0
+is_hammer = (close > open) and (lower_wick >= body_size * 2) and (upper_wick <= body_size * 0.5)
+is_shooting_star = (close < open) and (upper_wick >= body_size * 2) and (lower_wick <= body_size * 0.5)
+is_bullish_engulfing = (close > open) and (close[1] < open[1]) and (close > open[1]) and (open < close[1])
+is_bearish_engulfing = (close < open) and (close[1] > open[1]) and (close < open[1]) and (open > close[1])
+
+// Price Action Signals
+bullish_price_action = is_hammer or is_bullish_engulfing or (is_doji and is_at_support)
+bearish_price_action = is_shooting_star or is_bearish_engulfing or (is_doji and is_at_resistance)
+
+// =====================
+// === TREND ANALYSIS (Steve.pine Enhanced)
+// =====================
+
+// Trend Direction
+is_uptrend = close > ema_fast and ema_fast > ema_slow
+is_downtrend = close < ema_fast and ema_fast < ema_slow
+
+// Higher Timeframe Alignment
+htf_uptrend = close_htf > ema_htf
+htf_downtrend = close_htf < ema_htf
+
+// Trend Strength
+trend_strength = math.abs(ema_fast - ema_slow) / close
+ema_separation = math.abs(ema_fast - ema_slow) / close
+strong_trend = trend_strength > min_trend_strength and ema_separation > min_ema_separation
+
+// Trend Alignment
+trend_aligned_bull = is_uptrend and htf_uptrend
+trend_aligned_bear = is_downtrend and htf_downtrend
+
+// =====================
+// === ENHANCED DIVERGENCE DETECTION (Steve.pine Method)
+// =====================
+
+// Simple Divergence
+n_div_lookback = 8  // Shorter for scalping
+bullish_divergence = (low < ta.lowest(low, n_div_lookback)) and (rsi > ta.lowest(rsi, n_div_lookback))
+bearish_divergence = (high > ta.highest(high, n_div_lookback)) and (rsi < ta.highest(rsi, n_div_lookback))
+
+// Enhanced Divergence with Multi-Oscillator
+rsi_higher_low = rsi > rsi[1] and low < low[1]
+rsi_lower_high = rsi < rsi[1] and high > high[1]
+macd_bull_div = macd_line > macd_line[1] and low < low[1]
+macd_bear_div = macd_line < macd_line[1] and high > high[1]
+
+enhanced_bull_div = (rsi_higher_low or macd_bull_div) and bullish_divergence
+enhanced_bear_div = (rsi_lower_high or macd_bear_div) and bearish_divergence
+
+// =====================
+// === ULTIMATE CONFIDENCE SCORING (Steve.pine Method)
+// =====================
+
+// Module 1: Trend Analysis Score
+trend_score_bull = 0.0
+trend_score_bear = 0.0
+
+if trend_aligned_bull
+    trend_score_bull += 0.4
+if htf_uptrend
+    trend_score_bull += 0.3
+if close > vwap
+    trend_score_bull += 0.3
+
+if trend_aligned_bear
+    trend_score_bear += 0.4
+if htf_downtrend
+    trend_score_bear += 0.3
+if close < vwap
+    trend_score_bear += 0.3
+
+// Module 2: Momentum Confluence Score
+momentum_score_bull = 0.0
+momentum_score_bear = 0.0
+
+// RSI Signals
+if rsi < rsi_oversold and rsi > rsi_prev
+    momentum_score_bull += 0.25
+if rsi > rsi_overbought and rsi < rsi_prev
+    momentum_score_bear += 0.25
+
+// Stochastic Signals
+if stoch_k < 30 and stoch_k > stoch_d
+    momentum_score_bull += 0.25
+if stoch_k > 70 and stoch_k < stoch_d
+    momentum_score_bear += 0.25
+
+// MACD Signals
+if macd_line > signal_line and macd_histogram > macd_histogram[1]
+    momentum_score_bull += 0.25
+if macd_line < signal_line and macd_histogram < macd_histogram[1]
+    momentum_score_bear += 0.25
+
+// Williams %R Signals
+if williams_r < -70 and williams_r > williams_r[1]
+    momentum_score_bull += 0.25
+if williams_r > -30 and williams_r < williams_r[1]
+    momentum_score_bear += 0.25
+
+// Module 3: Market Structure Score
+structure_score_bull = 0.0
+structure_score_bear = 0.0
+
+if is_at_support
+    structure_score_bull += 0.5
+if bullish_price_action
+    structure_score_bull += 0.5
+
+if is_at_resistance
+    structure_score_bear += 0.5
+if bearish_price_action
+    structure_score_bear += 0.5
+
+// Module 4: Volume Analysis Score
+volume_score_bull = 0.0
+volume_score_bear = 0.0
+
+if is_high_volume and close > open
+    volume_score_bull += 0.6
+if close > vwap and volume_ratio > 1.0
+    volume_score_bull += 0.4
+
+if is_high_volume and close < open
+    volume_score_bear += 0.6
+if close < vwap and volume_ratio > 1.0
+    volume_score_bear += 0.4
+
+// Module 5: Divergence Score
+divergence_score_bull = enhanced_bull_div ? 1.0 : 0.0
+divergence_score_bear = enhanced_bear_div ? 1.0 : 0.0
+
+// =====================
+// === FINAL CONFIDENCE CALCULATION
+// =====================
+
+// Calculate Ultimate Confidence
+ultimate_bull_confidence = (trend_score_bull * w_trend) + 
+                          (momentum_score_bull * w_momentum) + 
+                          (structure_score_bull * w_structure) + 
+                          (volume_score_bull * w_volume) + 
+                          (divergence_score_bull * w_divergence)
+
+ultimate_bear_confidence = (trend_score_bear * w_trend) + 
+                          (momentum_score_bear * w_momentum) + 
+                          (structure_score_bear * w_structure) + 
+                          (volume_score_bear * w_volume) + 
+                          (divergence_score_bear * w_divergence)
+
+// ETH-specific adjustments (from Steve.pine)
+is_eth_symbol = str.contains(syminfo.ticker, "ETH")
+if is_eth_symbol
+    ultimate_bull_confidence *= 0.9
+    ultimate_bear_confidence *= 0.9
+    
+    if rsi > 70 or stoch_k > 85
+        ultimate_bull_confidence *= 0.7
+    if rsi < 30 or stoch_k < 15
+        ultimate_bear_confidence *= 0.7
+
+// Final Confidence (0-1 scale)
+confidence_bull = math.min(1.0, ultimate_bull_confidence)
+confidence_bear = math.min(1.0, ultimate_bear_confidence)
+
+// =====================
+// === SCALPING FILTERS & CONDITIONS
+// =====================
+
+// Session Filter
+in_session = enable_session_filter ? not na(time(timeframe.period, session_start)) : true
+
+// Volume & Volatility Filters
+volume_ok = volume_ratio > volume_threshold
+volatility_ok = volatility_ratio > volatility_threshold
+
+// RSI Range Filter (Flexible for Scalping)
+rsi_long_ok = (rsi >= 30 and rsi <= 70) or (rsi < rsi_oversold and rsi > rsi_prev)
+rsi_short_ok = (rsi >= 30 and rsi <= 70) or (rsi > rsi_overbought and rsi < rsi_prev)
+
+// Anti-Ranging Filter
+ranging_detection_period = 12
+price_range = ta.highest(high, ranging_detection_period) - ta.lowest(low, ranging_detection_period)
+avg_range = ta.sma(price_range, ranging_detection_period)
+ranging_ratio = price_range / avg_range
+anti_ranging_ok = ranging_ratio <= max_ranging_ratio
+
+// Signal Counting
+var int daily_signals = 0
+var int last_signal_day = na
+
+if dayofweek != dayofweek[1]
+    daily_signals := 0
+    last_signal_day := dayofweek
+
+// Cooldown Management
+var int last_long_bar = na
+var int last_short_bar = na
+
+cooldown_long_ok = na(last_long_bar) or (bar_index - last_long_bar) >= alert_cooldown_bars
+cooldown_short_ok = na(last_short_bar) or (bar_index - last_short_bar) >= alert_cooldown_bars
+
+// Signal Limit Check
+signal_limit_ok = not enable_signal_limit or daily_signals < max_daily_signals
+
+// =====================
+// === ENTRY CONDITIONS (Steve.pine Logic)
+// =====================
+
+// Base Entry Conditions
+base_long_condition = confidence_bull >= min_confidence and
+                     in_session and
+                     volume_ok and
+                     volatility_ok and
+                     rsi_long_ok and
+                     anti_ranging_ok and
+                     cooldown_long_ok and
+                     signal_limit_ok
+
+base_short_condition = confidence_bear >= min_confidence and
+                      in_session and
+                      volume_ok and
+                      volatility_ok and
+                      rsi_short_ok and
+                      anti_ranging_ok and
+                      cooldown_short_ok and
+                      signal_limit_ok
+
+// Signal Priority (Steve.pine Method)
+can_enter_long = base_long_condition and (not base_short_condition or confidence_bull > confidence_bear)
+can_enter_short = base_short_condition and (not base_long_condition or confidence_bear > confidence_bull)
+
+// High Confidence Signals
+high_confidence_long = can_enter_long and confidence_bull >= high_confidence_threshold
+high_confidence_short = can_enter_short and confidence_bear >= high_confidence_threshold
+
+// Update Signal Tracking
+if can_enter_long
+    last_long_bar := bar_index
+    daily_signals += 1
+
+if can_enter_short
+    last_short_bar := bar_index
+    daily_signals += 1
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+// EMA Lines
+plot(show_ema_lines ? ema_fast : na, "EMA Fast", color=color.blue, linewidth=2)
+plot(show_ema_lines ? ema_slow : na, "EMA Slow", color=color.red, linewidth=2)
+plot(show_ema_lines ? ema_htf : na, "EMA HTF", color=color.purple, linewidth=2, style=plot.style_circles)
+
+// VWAP
+plot(vwap, "VWAP", color=color.new(color.orange, 30), linewidth=2)
+
+// S&R Zones
+if show_sr_zones and not na(nearest_support)
+    support_top = nearest_support * (1 + sr_tolerance_pct/100)
+    support_bottom = nearest_support * (1 - sr_tolerance_pct/100)
+    box.new(bar_index - 1, support_top, bar_index, support_bottom, border_color=color.new(color.green, 70), bgcolor=color.new(color.green, 90))
+
+if show_sr_zones and not na(nearest_resistance)
+    resistance_top = nearest_resistance * (1 + sr_tolerance_pct/100)
+    resistance_bottom = nearest_resistance * (1 - sr_tolerance_pct/100)
+    box.new(bar_index - 1, resistance_top, bar_index, resistance_bottom, border_color=color.new(color.red, 70), bgcolor=color.new(color.red, 90))
+
+// Entry Signals
+signal_color_long = high_confidence_long ? color.new(color.lime, 0) : color.new(color.green, 30)
+signal_color_short = high_confidence_short ? color.new(color.red, 0) : color.new(color.orange, 30)
+
+plotshape(show_signals and can_enter_long ? low : na, "Long Signal", 
+          shape.triangleup, location.belowbar, signal_color_long, size=size.normal)
+plotshape(show_signals and can_enter_short ? high : na, "Short Signal", 
+          shape.triangledown, location.abovebar, signal_color_short, size=size.normal)
+
+// High Confidence Markers
+plotchar(high_confidence_long, "High Conf Long", "🎯", location.belowbar, color.new(color.lime, 0), size=size.small)
+plotchar(high_confidence_short, "High Conf Short", "🎯", location.abovebar, color.new(color.red, 0), size=size.small)
+
+// =====================
+// === CONFIDENCE TABLE (Moved to Top Right)
+// =====================
+
+if show_confidence_table
+    var table confidence_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1)
+    
+    if barstate.islast
+        table.clear(confidence_table, 0, 0)
+        
+        // Header
+        table.cell(confidence_table, 0, 0, "STEVE ENHANCED", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+        table.cell(confidence_table, 1, 0, "VALUES", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+        
+        // Confidence Scores
+        table.cell(confidence_table, 0, 1, "Bull Confidence", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 1, str.tostring(confidence_bull, "#.##"), 
+                  text_color=confidence_bull >= min_confidence ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 2, "Bear Confidence", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 2, str.tostring(confidence_bear, "#.##"), 
+                  text_color=confidence_bear >= min_confidence ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 3, "Daily Signals", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 3, str.tostring(daily_signals) + "/" + str.tostring(max_daily_signals), 
+                  text_color=color.blue, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 4, "Volume Ratio", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 4, str.tostring(volume_ratio, "#.##"), 
+                  text_color=volume_ok ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 5, "RSI", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 5, str.tostring(rsi, "#.#"), 
+                  text_color=rsi > 70 ? color.red : rsi < 30 ? color.green : color.gray, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 6, "Trend Strength", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 6, str.tostring(trend_strength * 100, "#.##") + "%", 
+                  text_color=strong_trend ? color.green : color.orange, text_size=size.tiny)
+        
+        table.cell(confidence_table, 0, 7, "Target: ETH", text_color=color.black, text_size=size.tiny)
+        table.cell(confidence_table, 1, 7, is_eth_symbol ? "✓ ACTIVE" : "○ OTHER", 
+                  text_color=is_eth_symbol ? color.green : color.gray, text_size=size.tiny)
+
+// =====================
+// === ALERT CONDITIONS (Steve.pine Format)
+// =====================
+
+// Alert with Steve.pine JSON format
+alertcondition(can_enter_long, title="🎯 Steve Enhanced Long", message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": "HIGH", "timestamp": "{{time}}", "strategy": "Steve Enhanced Scalping", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+alertcondition(can_enter_short, title="🎯 Steve Enhanced Short", message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": "HIGH", "timestamp": "{{time}}", "strategy": "Steve Enhanced Scalping", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// High Confidence Alerts
+alertcondition(high_confidence_long, title="🚀 Steve High Confidence Long", message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": "ULTRA_HIGH", "timestamp": "{{time}}", "strategy": "Steve High Confidence", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+alertcondition(high_confidence_short, title="🚀 Steve High Confidence Short", message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": "ULTRA_HIGH", "timestamp": "{{time}}", "strategy": "Steve High Confidence", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === END OF STEVE ENHANCED SCALPING
+// =====================

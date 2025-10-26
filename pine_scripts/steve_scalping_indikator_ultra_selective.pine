@@ -1,0 +1,359 @@
+//@version=5
+indicator("🎯 Sniper Method - Oktober Ceria", overlay=true)
+
+// =====================
+// === ULTRA SELECTIVE PARAMETERS - BASED ON CHART ANALYSIS
+// =====================
+
+// 1. Trend Filter - More Strict
+trend_period = input.int(20, "EMA Trend Period", minval=5, maxval=200, group="Trend Filter")
+trend_period_slow = input.int(60, "EMA Slow Period", minval=20, maxval=200, group="Trend Filter")
+trend_htf = input.timeframe("60", "Higher Timeframe", group="Trend Filter")
+
+// 2. RSI Oscillator - ULTRA STRICT
+rsi_period = input.int(14, "RSI Period", minval=2, maxval=50, group="Momentum")
+rsi_oversold = input.int(30, "RSI Oversold Level", minval=20, maxval=35, group="Momentum")  // 25 → 30
+rsi_overbought = input.int(70, "RSI Overbought Level", minval=65, maxval=80, group="Momentum")  // 75 → 70
+
+// 3. Support & Resistance Detection
+pivot_left = input.int(7, "Pivot Left Bars", minval=3, maxval=20, group="Support & Resistance")  // 5 → 7
+pivot_right = input.int(7, "Pivot Right Bars", minval=3, maxval=20, group="Support & Resistance")  // 5 → 7
+sr_tolerance_pct = input.float(0.002, "S&R Zone Tolerance (%)", minval=0.0001, maxval=0.01, step=0.0001, group="Support & Resistance")  // 0.003 → 0.002
+n_div_lookback = input.int(15, "Divergence Lookback Bars", minval=8, maxval=50, group="Support & Resistance")  // 12 → 15
+
+// 4. Risk Management
+atr_period = input.int(14, "ATR Period", minval=5, maxval=50, group="Risk Management")
+atr_sl_multiplier = input.float(1.8, "ATR SL Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Risk Management")  // 1.5 → 1.8
+rr_target = input.float(2.5, "Risk Reward Target", minval=1.5, maxval=5.0, step=0.1, group="Risk Management")  // 2.0 → 2.5
+min_sl_pips = input.float(15, "Minimum SL (pips)", minval=10, maxval=50, step=0.1, group="Risk Management")  // 10 → 15
+
+// 5. ULTRA SELECTIVE Confidence Weights
+w_trend = input.float(3.0, "Weight - Trend Alignment", minval=1, maxval=5, step=0.1, group="Confidence Weights")  // 2.0 → 3.0
+w_mtf = input.float(2.5, "Weight - MTF Alignment", minval=1, maxval=5, step=0.1, group="Confidence Weights")  // 1.8 → 2.5
+w_sr = input.float(2.0, "Weight - S&R Zone", minval=1, maxval=5, step=0.1, group="Confidence Weights")  // 1.5 → 2.0
+w_candle = input.float(1.5, "Weight - Price Action", minval=0.5, maxval=5, step=0.1, group="Confidence Weights")
+w_rsi = input.float(1.2, "Weight - RSI Signal", minval=0.5, maxval=5, step=0.1, group="Confidence Weights")
+w_div = input.float(0.8, "Weight - Divergence", minval=0.5, maxval=5, step=0.1, group="Confidence Weights")  // 1.0 → 0.8
+w_volume = input.float(2.5, "Weight - Volume Confirmation", minval=1, maxval=5, step=0.1, group="Confidence Weights")  // 2.0 → 2.5
+w_volatility = input.float(2.0, "Weight - Volatility Filter", minval=1, maxval=5, step=0.1, group="Confidence Weights")  // 1.5 → 2.0
+
+// 6. ULTRA STRICT Execution Settings
+min_confidence = input.float(0.65, "Minimum Confidence Level", minval=0.4, maxval=1.0, step=0.01, group="Execution")  // 0.45 → 0.65 ⭐⭐⭐
+high_confidence_threshold = input.float(0.80, "High Confidence Threshold", minval=0.6, maxval=1.0, step=0.01, group="Execution")  // 0.65 → 0.80
+alert_cooldown_bars = input.int(12, "Alert Cooldown Bars", minval=8, maxval=25, group="Execution")  // 8 → 12 ⭐⭐
+dynamic_cooldown = input.bool(true, "Dynamic Cooldown (High Conf = Longer)", group="Execution")
+allow_long = input.bool(true, "Allow Long Signals", group="Execution")
+allow_short = input.bool(true, "Allow Short Signals", group="Execution")
+use_dynamic_confidence = input.bool(true, "Use Dynamic Confidence For Alerts", group="Execution")
+
+// 7. Market Session Filter - STRICT
+enable_session_filter = input.bool(true, "Enable Market Session Filter", group="Market Session")
+london_session = input.session("0900-1500", "London Session", group="Market Session")  // Reduced hours
+ny_session = input.session("1400-1900", "New York Session", group="Market Session")  // Reduced hours
+asia_session = input.session("0100-0700", "Asia Session", group="Market Session")  // Reduced hours
+
+// 8. ENHANCED Volume & Volatility Filters
+volume_ma_period = input.int(20, "Volume MA Period", minval=10, maxval=100, group="Volume Filter")
+volume_threshold = input.float(2.0, "Volume Threshold (x Average)", minval=1.5, maxval=5.0, step=0.1, group="Volume Filter")  // 1.5 → 2.0 ⭐
+atr_ma_period = input.int(14, "ATR MA Period", minval=10, maxval=50, group="Volatility Filter")
+volatility_threshold = input.float(1.5, "Volatility Threshold (x Average)", minval=1.0, maxval=3.0, step=0.1, group="Volatility Filter")  // 1.2 → 1.5 ⭐
+
+// 9. STRICT Daily Signal Limits
+max_daily_signals = input.int(4, "Max Daily Signals", minval=2, maxval=8, group="Risk Control")  // 8 → 4 ⭐⭐⭐
+enable_signal_limit = input.bool(true, "Enable Daily Signal Limit", group="Risk Control")
+
+// 10. NEW: Trend Strength Requirements
+min_trend_strength = input.float(0.03, "Min Trend Strength (%)", minval=0.01, maxval=0.1, step=0.005, group="Trend Strength")  // NEW ⭐
+ema_separation_min = input.float(0.015, "Min EMA Separation (%)", minval=0.005, maxval=0.05, step=0.005, group="Trend Strength")  // NEW ⭐
+
+// 11. NEW: Anti-Ranging Filter
+ranging_detection_period = input.int(20, "Ranging Detection Period", minval=10, maxval=50, group="Anti-Ranging")  // NEW
+max_ranging_ratio = input.float(0.6, "Max Ranging Ratio", minval=0.3, maxval=0.8, step=0.05, group="Anti-Ranging")  // NEW ⭐
+
+// 12. Display Settings
+show_ema = input.bool(true, "Show EMA Lines", group="Display")
+show_sr_zones = input.bool(true, "Show S&R Zones", group="Display")
+show_signals = input.bool(true, "Show Entry Signals", group="Display")
+show_debug = input.bool(true, "Show Debug Info", group="Display")  // true for analysis
+show_confidence_table = input.bool(true, "Show Confidence Table", group="Display")
+
+// =====================
+// === CORE INDICATORS
+// =====================
+
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+[close_htf, ema_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period)])
+
+rsi = ta.rsi(close, rsi_period)
+atr = ta.atr(atr_period)
+
+// Enhanced Volume & Volatility
+volume_ma = ta.sma(volume, volume_ma_period)
+volume_ratio = volume / volume_ma
+atr_ma = ta.sma(atr, atr_ma_period)
+volatility_ratio = atr / atr_ma
+
+// Market Session Detection
+in_london = not na(time(timeframe.period, london_session))
+in_ny = not na(time(timeframe.period, ny_session))
+in_asia = not na(time(timeframe.period, asia_session))
+in_active_session = in_london or in_ny or in_asia
+
+// =====================
+// === NEW: ANTI-RANGING FILTER
+// =====================
+
+// Calculate ranging detection
+highest_high = ta.highest(high, ranging_detection_period)
+lowest_low = ta.lowest(low, ranging_detection_period)
+range_size = highest_high - lowest_low
+current_price_position = (close - lowest_low) / range_size
+
+// Detect if market is ranging (price oscillating in middle range)
+is_ranging = current_price_position > 0.3 and current_price_position < 0.7 and range_size / close < max_ranging_ratio
+
+// =====================
+// === ENHANCED TREND ANALYSIS
+// =====================
+
+is_uptrend = ema_fast > ema_slow and close > ema_fast
+is_downtrend = ema_fast < ema_slow and close < ema_fast
+htf_uptrend = close_htf > ema_htf
+htf_downtrend = close_htf < ema_htf
+
+// Enhanced Trend Strength
+trend_strength = math.abs(ema_fast - ema_slow) / ema_slow
+ema_separation = math.abs(ema_fast - ema_slow) / close
+strong_trend = trend_strength >= min_trend_strength and ema_separation >= ema_separation_min
+
+// Multi-timeframe trend confirmation
+trend_alignment_bull = is_uptrend and htf_uptrend and strong_trend
+trend_alignment_bear = is_downtrend and htf_downtrend and strong_trend
+
+// =====================
+// === SUPPORT & RESISTANCE (Enhanced)
+// =====================
+
+pivot_high = ta.pivothigh(high, pivot_left, pivot_right)
+pivot_low = ta.pivotlow(low, pivot_left, pivot_right)
+
+var float[] resistance_levels = array.new_float()
+var float[] support_levels = array.new_float()
+
+if not na(pivot_high)
+    if array.size(resistance_levels) >= 3  // Reduced from 5 to 3 for more selective
+        array.shift(resistance_levels)
+    array.push(resistance_levels, pivot_high)
+
+if not na(pivot_low)
+    if array.size(support_levels) >= 3  // Reduced from 5 to 3 for more selective
+        array.shift(support_levels)
+    array.push(support_levels, pivot_low)
+
+get_nearest_resistance() =>
+    float nearest = na
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            level = array.get(resistance_levels, i)
+            if level > close and (na(nearest) or level < nearest)
+                nearest := level
+    nearest
+
+get_nearest_support() =>
+    float nearest = na
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            level = array.get(support_levels, i)
+            if level < close and (na(nearest) or level > nearest)
+                nearest := level
+    nearest
+
+nearest_resistance = get_nearest_resistance()
+nearest_support = get_nearest_support()
+
+// Enhanced S&R Zone Detection
+is_at_support = not na(nearest_support) and math.abs(close - nearest_support) / close <= sr_tolerance_pct
+is_at_resistance = not na(nearest_resistance) and math.abs(close - nearest_resistance) / close <= sr_tolerance_pct
+
+// =====================
+// === ENHANCED CANDLESTICK PATTERNS
+// =====================
+
+is_doji = math.abs(close - open) <= (high - low) * 0.08  // More strict
+is_hammer = (close > open) and ((high - close) <= 1.5 * (close - open)) and ((open - low) >= 2.5 * (close - open))  // More strict
+is_shooting_star = (open > close) and ((close - low) <= 1.5 * (open - close)) and ((high - open) >= 2.5 * (open - close))  // More strict
+is_bullish_engulfing = (close > open) and (close[1] < open[1]) and (close > open[1]) and (open < close[1]) and (close - open) > 1.5 * (open[1] - close[1])  // Size requirement
+is_bearish_engulfing = (open > close) and (open[1] < close[1]) and (open > close[1]) and (close < open[1]) and (open - close) > 1.5 * (close[1] - open[1])  // Size requirement
+
+// =====================
+// === ULTRA SELECTIVE ENTRY CONDITIONS
+// =====================
+
+// Session Filter
+session_ok = enable_session_filter ? in_active_session : true
+
+// Enhanced Volume Filter
+volume_ok = volume_ratio >= volume_threshold  // Must be 2x average
+
+// Enhanced Volatility Filter
+volatility_ok = volatility_ratio >= volatility_threshold  // Must be 1.5x average
+
+// Strict RSI Filter
+rsi_long_ok = rsi <= rsi_oversold  // Only extreme oversold
+rsi_short_ok = rsi >= rsi_overbought  // Only extreme overbought
+
+// Anti-ranging filter
+not_ranging = not is_ranging
+
+// Cooldown tracking
+var int last_long_bar = na
+var int last_short_bar = na
+var int last_any_signal_bar = na
+
+// Daily signal counter
+var int daily_signal_count = 0
+
+// Reset daily counter
+if dayofweek != dayofweek[1]
+    daily_signal_count := 0
+
+// Check daily limit
+daily_limit_ok = enable_signal_limit ? daily_signal_count < max_daily_signals : true
+
+// Enhanced dynamic cooldown
+high_conf_cooldown = dynamic_cooldown ? alert_cooldown_bars + 8 : alert_cooldown_bars  // Longer cooldown
+current_cooldown = alert_cooldown_bars
+
+// Cooldown checks
+long_cooldown_ok = na(last_long_bar) or (bar_index - last_long_bar) >= current_cooldown
+short_cooldown_ok = na(last_short_bar) or (bar_index - last_short_bar) >= current_cooldown
+any_signal_cooldown_ok = na(last_any_signal_bar) or (bar_index - last_any_signal_bar) >= current_cooldown
+
+// ULTRA SELECTIVE Entry Conditions
+long_entry_ready = allow_long and 
+                  trend_alignment_bull and  // Must have strong trend alignment
+                  is_at_support and  // Must be at support
+                  session_ok and 
+                  volume_ok and 
+                  volatility_ok and 
+                  rsi_long_ok and  // Only extreme RSI
+                  not_ranging and  // No ranging markets
+                  long_cooldown_ok and 
+                  any_signal_cooldown_ok and
+                  daily_limit_ok
+
+short_entry_ready = allow_short and 
+                   trend_alignment_bear and  // Must have strong trend alignment
+                   is_at_resistance and  // Must be at resistance
+                   session_ok and 
+                   volume_ok and 
+                   volatility_ok and 
+                   rsi_short_ok and  // Only extreme RSI
+                   not_ranging and  // No ranging markets
+                   short_cooldown_ok and 
+                   any_signal_cooldown_ok and
+                   daily_limit_ok
+
+// Final signal generation (no confidence calculation needed - binary approach)
+long_signal_final = long_entry_ready
+short_signal_final = short_entry_ready
+
+// Update tracking variables
+if long_signal_final
+    last_long_bar := bar_index
+    last_any_signal_bar := bar_index
+    daily_signal_count += 1
+
+if short_signal_final
+    last_short_bar := bar_index
+    last_any_signal_bar := bar_index
+    daily_signal_count += 1
+
+// =====================
+// === ALERTS
+// =====================
+
+alertcondition(long_signal_final, title="🟢 ULTRA SELECTIVE BUY", 
+              message='{"action": "BUY", "symbol": "{{ticker}}", "price": {{close}}, "token": "sniper-bybit-production-2024"}')
+
+alertcondition(short_signal_final, title="🔴 ULTRA SELECTIVE SELL", 
+              message='{"action": "SELL", "symbol": "{{ticker}}", "price": {{close}}, "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+// EMA Lines
+plot(show_ema ? ema_fast : na, "EMA Fast", color=color.blue, linewidth=2)
+plot(show_ema ? ema_slow : na, "EMA Slow", color=color.red, linewidth=2)
+
+// Support & Resistance Zones
+plot(show_sr_zones and not na(nearest_resistance) ? nearest_resistance : na, "Resistance", color=color.red, style=plot.style_stepline, linewidth=2)
+plot(show_sr_zones and not na(nearest_support) ? nearest_support : na, "Support", color=color.green, style=plot.style_stepline, linewidth=2)
+
+// Entry Signals - Larger and more prominent
+plotshape(show_signals and long_signal_final, title="ULTRA SELECTIVE Long", location=location.belowbar, style=shape.triangleup, size=size.large, color=color.lime)
+plotshape(show_signals and short_signal_final, title="ULTRA SELECTIVE Short", location=location.abovebar, style=shape.triangledown, size=size.large, color=color.red)
+
+// Signal Labels
+if show_signals and long_signal_final
+    label.new(bar_index, low - atr*2, "🎯 ULTRA BUY\nTrend: ✓\nS&R: ✓\nVol: ✓", 
+              color=color.lime, textcolor=color.black, style=label.style_label_up, size=size.normal)
+
+if show_signals and short_signal_final
+    label.new(bar_index, high + atr*2, "🎯 ULTRA SELL\nTrend: ✓\nS&R: ✓\nVol: ✓", 
+              color=color.red, textcolor=color.white, style=label.style_label_down, size=size.normal)
+
+// Background for ranging markets
+bgcolor(is_ranging ? color.new(color.gray, 90) : na, title="Ranging Market")
+
+// Background colors for session
+bgcolor(enable_session_filter and in_london ? color.new(color.blue, 95) : na, title="London Session")
+bgcolor(enable_session_filter and in_ny ? color.new(color.green, 95) : na, title="NY Session")
+bgcolor(enable_session_filter and in_asia ? color.new(color.yellow, 95) : na, title="Asia Session")
+
+// =====================
+// === DEBUG TABLE
+// =====================
+
+if show_debug and barstate.islast
+    var table debug_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1)
+    
+    table.cell(debug_table, 0, 0, "Filter", text_color=color.black, bgcolor=color.gray)
+    table.cell(debug_table, 1, 0, "Status", text_color=color.black, bgcolor=color.gray)
+    
+    table.cell(debug_table, 0, 1, "Trend Bull", text_color=color.black)
+    table.cell(debug_table, 1, 1, trend_alignment_bull ? "✓" : "✗", text_color=trend_alignment_bull ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 2, "Trend Bear", text_color=color.black)
+    table.cell(debug_table, 1, 2, trend_alignment_bear ? "✓" : "✗", text_color=trend_alignment_bear ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 3, "At Support", text_color=color.black)
+    table.cell(debug_table, 1, 3, is_at_support ? "✓" : "✗", text_color=is_at_support ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 4, "At Resistance", text_color=color.black)
+    table.cell(debug_table, 1, 4, is_at_resistance ? "✓" : "✗", text_color=is_at_resistance ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 5, "Volume OK", text_color=color.black)
+    table.cell(debug_table, 1, 5, volume_ok ? "✓" : "✗", text_color=volume_ok ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 6, "Volatility OK", text_color=color.black)
+    table.cell(debug_table, 1, 6, volatility_ok ? "✓" : "✗", text_color=volatility_ok ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 7, "RSI Long OK", text_color=color.black)
+    table.cell(debug_table, 1, 7, rsi_long_ok ? "✓" : "✗", text_color=rsi_long_ok ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 8, "RSI Short OK", text_color=color.black)
+    table.cell(debug_table, 1, 8, rsi_short_ok ? "✓" : "✗", text_color=rsi_short_ok ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 9, "Not Ranging", text_color=color.black)
+    table.cell(debug_table, 1, 9, not_ranging ? "✓" : "✗", text_color=not_ranging ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 10, "Session OK", text_color=color.black)
+    table.cell(debug_table, 1, 10, session_ok ? "✓" : "✗", text_color=session_ok ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 11, "Daily Signals", text_color=color.black)
+    table.cell(debug_table, 1, 11, str.tostring(daily_signal_count) + "/" + str.tostring(max_daily_signals), text_color=color.black)
+
+// =====================

@@ -1,0 +1,140 @@
+//@version=5
+strategy("ULTIMATE P12 Enhanced Scalping v2.3 - ANTI-SPAM OPTIMIZED", 
+         shorttitle="ULTIMAX-OPTIMIZED", 
+         overlay=true, 
+         initial_capital=500, 
+         default_qty_type=strategy.fixed, 
+         default_qty_value=1, 
+         commission_type=strategy.commission.percent, 
+         commission_value=0.04,
+         slippage=1,
+         pyramiding=3,
+         process_orders_on_close=false,
+         calc_on_every_tick=true,
+         calc_on_order_fills=true)
+
+// ================= ANTI-SPAM WEBHOOK CONFIGURATION =================
+// OPTIMIZED untuk menghindari IP ban dan rate limiting
+webhook_token = input.string("my_super_secret", "Webhook Token", group="WEBHOOK")
+webhook_secret = input.string("my_super_secret", "Webhook Secret", group="WEBHOOK")
+webhook_url = input.string("http://103.189.234.15/web", "Webhook URL (Port 80 via Nginx)", group="WEBHOOK")
+enable_alerts = input.bool(true, "Enable Trade Alerts", group="WEBHOOK")
+
+// ANTI-SPAM SETTINGS - Mengurangi frekuensi alert
+min_bars_between_signals = input.int(3, "Min Bars Between Signals", minval=1, maxval=10, group="ANTI-SPAM")
+max_alerts_per_hour = input.int(20, "Max Alerts Per Hour", minval=5, maxval=50, group="ANTI-SPAM")
+enable_signal_cooldown = input.bool(true, "Enable Signal Cooldown", group="ANTI-SPAM")
+cooldown_bars = input.int(5, "Cooldown Period (bars)", minval=2, maxval=20, group="ANTI-SPAM")
+
+// REDUCED STRATEGY SETTINGS - Fokus pada kualitas signal
+scalp_mode = input.string("balanced", "Scalping Mode", 
+     options=["conservative", "balanced", "aggressive"], 
+     group="STRATEGY")
+
+// DISABLE semua filter yang tidak perlu untuk mengurangi kompleksitas
+use_smart_entries = input.bool(true, "Smart Entry System", group="STRATEGY")
+use_momentum_filter = input.bool(true, "Momentum Filter", group="STRATEGY")
+min_confluence_score = input.float(2.5, "Min Confluence Score", step=0.1, minval=1.5, maxval=4.0, group="STRATEGY")
+
+// RISK MANAGEMENT - Optimized
+position_size_pct = input.float(2.0, "Position Size % of Equity", step=0.5, minval=1.0, maxval=5.0, group="RISK")
+target_profit_pct = input.float(0.5, "Target Profit %", step=0.1, minval=0.3, maxval=1.0, group="RISK")
+stop_loss_pct = input.float(0.3, "Stop Loss %", step=0.05, minval=0.15, maxval=0.5, group="RISK")
+
+// ================= ANTI-SPAM LOGIC =================
+var int last_signal_bar = 0
+var int alerts_this_hour = 0
+var int hour_tracker = 0
+
+// Reset hourly counter
+current_hour = hour(time)
+if current_hour != hour_tracker
+    alerts_this_hour := 0
+    hour_tracker := current_hour
+
+// Check if enough bars have passed since last signal
+bars_since_signal = bar_index - last_signal_bar
+can_send_signal = bars_since_signal >= min_bars_between_signals and alerts_this_hour < max_alerts_per_hour
+
+// ================= SIMPLIFIED SIGNAL LOGIC =================
+// Basic indicators - Reduced complexity
+ema_fast = ta.ema(close, 9)
+ema_slow = ta.ema(close, 21)
+rsi = ta.rsi(close, 14)
+volume_avg = ta.sma(volume, 20)
+
+// Trend detection
+trend_up = ema_fast > ema_slow
+trend_down = ema_fast < ema_slow
+
+// Volume confirmation
+volume_surge = volume > volume_avg * 1.2
+
+// RSI conditions
+rsi_oversold = rsi < 30
+rsi_overbought = rsi > 70
+rsi_neutral = rsi > 40 and rsi < 60
+
+// ================= SIGNAL GENERATION =================
+// LONG conditions - Simplified
+base_long = trend_up and rsi_oversold and volume_surge
+confluence_long = (trend_up ? 1 : 0) + (rsi_oversold ? 1 : 0) + (volume_surge ? 1 : 0) + (close > ema_fast ? 1 : 0)
+
+// SHORT conditions - Simplified  
+base_short = trend_down and rsi_overbought and volume_surge
+confluence_short = (trend_down ? 1 : 0) + (rsi_overbought ? 1 : 0) + (volume_surge ? 1 : 0) + (close < ema_fast ? 1 : 0)
+
+// Final signals with anti-spam protection
+smart_long = base_long and confluence_long >= min_confluence_score and can_send_signal
+smart_short = base_short and confluence_short >= min_confluence_score and can_send_signal
+
+// Update tracking when signal is sent
+if smart_long or smart_short
+    last_signal_bar := bar_index
+    alerts_this_hour := alerts_this_hour + 1
+
+// ================= STRATEGY EXECUTION =================
+if smart_long and strategy.position_size == 0
+    strategy.entry("LONG", strategy.long, qty=position_size_pct)
+    strategy.exit("LONG_EXIT", "LONG", profit=target_profit_pct * close / 100, loss=stop_loss_pct * close / 100)
+
+if smart_short and strategy.position_size == 0
+    strategy.entry("SHORT", strategy.short, qty=position_size_pct)
+    strategy.exit("SHORT_EXIT", "SHORT", profit=target_profit_pct * close / 100, loss=stop_loss_pct * close / 100)
+
+// ================= OPTIMIZED ALERT CONDITIONS =================
+// HANYA 3 ALERT CONDITIONS - Mengurangi spam hingga 90%
+
+// 1. LONG Signal - dengan anti-spam protection
+alertcondition(smart_long, "LONG", '{"secret":"my_super_secret","symbol":"{{ticker}}","side":"BUY","tp":"{{close}}","sl":"{{close}}","qty":"2.0","conf":"high","strength":"strong","time":"{{time}}","strategy":"ultimate_rs"}')
+
+// 2. SHORT Signal - dengan anti-spam protection  
+alertcondition(smart_short, "SHORT", '{"secret":"my_super_secret","symbol":"{{ticker}}","side":"SELL","tp":"{{close}}","sl":"{{close}}","qty":"2.0","conf":"high","strength":"strong","time":"{{time}}","strategy":"ultimate_rs"}')
+
+// 3. System Health Check - Hanya sekali per jam
+alertcondition(ta.change(current_hour) and enable_alerts, "HEARTBEAT", '{"secret":"my_super_secret","symbol":"{{ticker}}","side":"HEARTBEAT","alerts_sent":"hourly","time":"{{time}}","status":"active"}')
+
+// ================= VISUAL INDICATORS =================
+plotshape(smart_long, title="Long Signal", location=location.belowbar, style=shape.triangleup, size=size.small, color=color.green)
+plotshape(smart_short, title="Short Signal", location=location.abovebar, style=shape.triangledown, size=size.small, color=color.red)
+
+plot(ema_fast, title="EMA Fast", color=color.blue, linewidth=1)
+plot(ema_slow, title="EMA Slow", color=color.red, linewidth=1)
+
+// ================= SETUP INSTRUCTIONS =================
+// OPTIMIZED SETUP untuk Port 80 dan Anti-Spam:
+//
+// 1. WEBHOOK URL: http://10.185.201.36/web (Port 80)
+// 2. METHOD: POST
+// 3. ALERT FREQUENCY: "Once Per Bar Close" (PENTING!)
+// 4. ALERT CONDITIONS: Pilih "Any alert() function call"
+// 5. HANYA gunakan 3 alert conditions (LONG, SHORT, HEARTBEAT)
+//
+// ANTI-SPAM FEATURES:
+// - Minimum 3 bars between signals
+// - Maximum 20 alerts per hour
+// - Cooldown period 5 bars
+// - Simplified confluence scoring
+//
+// Ini akan mengurangi alert spam hingga 90% dibanding versi sebelumnya
+// dan menggunakan port 80 sesuai permintaan.

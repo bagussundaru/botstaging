@@ -1,0 +1,2752 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © YourUsername
+
+// ===============================================================================
+// ADVANCED CRYPTO SCALPING STRATEGY V7 - ENHANCED S/R + FIBONACCI
+// ===============================================================================
+// 
+// MAJOR ENHANCEMENTS V7:
+// - Ultra-clear Support/Resistance visualization with gradient zones
+// - Integrated Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
+// - Fibonacci extension targets for take profit optimization
+// - Volume-weighted S/R strength calculation
+// - Dynamic S/R thickness based on strength and age
+// - Enhanced color coding with transparency gradients
+// - Fibonacci confluence detection with S/R levels
+// - Auto Fibonacci drawing on major swing points
+// - Advanced S/R break/hold detection with alerts
+//
+// ===============================================================================
+
+//@version=5
+strategy("Advanced Crypto Scalping Strategy v7 - Enhanced S/R + Fibonacci",
+         shorttitle="ACSS_v7_SR",
+         overlay=true,
+         initial_capital=500,
+         default_qty_type=strategy.cash,
+         default_qty_value=50,
+         commission_type=strategy.commission.percent,
+         commission_value=0.1,
+         slippage=2,
+         pyramiding=0,
+         close_entries_rule="FIFO",
+         calc_on_every_tick=false,
+         calc_on_order_fills=false,
+         use_bar_magnifier=false)
+
+// Filter untuk hanya trading BNB saja
+is_bnb = syminfo.ticker == "BNBUSDT" or syminfo.ticker == "BNBUSDT.P" or syminfo.ticker == "BNBUSD" or syminfo.ticker == "BNB/USDT" or syminfo.ticker == "BNB/USD"
+
+// ===============================================================================
+// ENHANCED INPUT PARAMETERS
+// ===============================================================================
+
+// === MULTI-TIMEFRAME SETTINGS ===
+higher_tf = input.timeframe("15", "Higher Timeframe", group="Multi-Timeframe Analysis")
+enable_mtf_filter = input.bool(true, "Enable Multi-Timeframe Filter", group="Multi-Timeframe Analysis")
+htf_trend_strength = input.float(1.5, "HTF Trend Strength Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Multi-Timeframe Analysis")
+
+// === ENHANCED FIBONACCI SETTINGS ===
+enable_fibonacci = input.bool(true, "Enable Fibonacci Levels", group="Fibonacci Settings")
+fib_lookback = input.int(50, "Fibonacci Lookback Period", minval=10, maxval=200, group="Fibonacci Settings")
+fib_threshold = input.float(0.5, "Fibonacci Swing Threshold (%)", minval=0.1, maxval=2.0, step=0.1, group="Fibonacci Settings")
+show_fib_levels = input.bool(true, "Show Fibonacci Retracement Levels", group="Fibonacci Settings")
+show_fib_extensions = input.bool(true, "Show Fibonacci Extension Levels", group="Fibonacci Settings")
+fib_line_width = input.int(1, "Fibonacci Line Width", minval=1, maxval=4, group="Fibonacci Settings")
+fib_extend_right = input.int(20, "Extend Fibonacci Right (bars)", minval=5, maxval=100, group="Fibonacci Settings")
+enable_fib_alerts = input.bool(true, "Enable Fibonacci Level Alerts", group="Fibonacci Settings")
+
+// === ENHANCED SUPPORT/RESISTANCE SETTINGS ===
+lookback_period = input.int(25, "S/R Lookback Period", minval=10, maxval=100, group="🔴 Enhanced S/R Settings")
+sr_tolerance = input.float(0.25, "S/R Tolerance (%)", minval=0.1, maxval=1.0, step=0.05, group="🔴 Enhanced S/R Settings")
+sr_zone_width = input.float(0.15, "S/R Zone Width (%)", minval=0.05, maxval=0.5, step=0.05, group="🔴 Enhanced S/R Settings")
+min_touches = input.int(2, "Minimum Touches", minval=1, maxval=5, group="🔴 Enhanced S/R Settings")
+sr_strength_filter = input.bool(true, "Enable S/R Strength Filter", group="🔴 Enhanced S/R Settings")
+max_sr_levels = input.int(8, "Max Stored S/R Levels", minval=3, maxval=15, group="🔴 Enhanced S/R Settings")
+sr_merge_threshold = input.float(0.12, "Merge Threshold %", minval=0.05, maxval=0.3, step=0.05, group="🔴 Enhanced S/R Settings")
+enable_volume_weighted_sr = input.bool(true, "Volume-Weighted S/R Strength", group="🔴 Enhanced S/R Settings")
+sr_break_confirmation_bars = input.int(2, "Break Confirmation Bars", minval=1, maxval=5, group="🔴 Enhanced S/R Settings")
+
+// === ENHANCED VISUAL SETTINGS ===
+sr_visual_mode = input.string("Enhanced", "S/R Visual Mode", options=["Compact", "Standard", "Enhanced", "Gradient Zones"], group="🎨 Enhanced Visuals")
+enable_gradient_zones = input.bool(true, "Enable Gradient S/R Zones", group="🎨 Enhanced Visuals")
+zone_transparency_start = input.int(60, "Zone Transparency Start", minval=30, maxval=90, group="🎨 Enhanced Visuals")
+zone_transparency_end = input.int(90, "Zone Transparency End", minval=60, maxval=95, group="🎨 Enhanced Visuals")
+sr_line_transparency = input.int(10, "S/R Line Transparency", minval=0, maxval=50, group="🎨 Enhanced Visuals")
+dynamic_line_width = input.bool(true, "Dynamic Line Width (by strength)", group="🎨 Enhanced Visuals")
+show_sr_labels_enhanced = input.bool(true, "Enhanced S/R Labels", group="🎨 Enhanced Visuals")
+
+// === RISK MANAGEMENT (unchanged but reorganized) ===
+risk_per_trade = input.float(1.5, "Risk Per Trade (%)", minval=0.1, maxval=10.0, step=0.1, group="Risk Management")
+max_risk_per_day = input.float(6.0, "Max Daily Risk (%)", minval=1.0, maxval=20.0, step=0.5, group="Risk Management")
+leverage = input.int(10, "Leverage", minval=1, maxval=100, group="Risk Management")
+risk_reward_ratio = input.float(2.2, "Risk:Reward Ratio", minval=1.0, maxval=5.0, step=0.1, group="Risk Management")
+use_trailing_stop = input.bool(true, "Use Trailing Stop", group="Risk Management")
+trailing_stop_pct = input.float(1.2, "Trailing Stop (%)", minval=0.1, maxval=5.0, step=0.1, group="Risk Management")
+target_profit_usd = input.float(5.0, "Target Profit USD", minval=1.0, maxval=50.0, step=0.5, group="Risk Management")
+enable_hybrid_qty = input.bool(true, "Hybrid Sizing (Risk & Target Profit)", group="Risk Management")
+min_profit_tick_ratio = input.float(0.15, "Min Profit % of Price (filter)", minval=0.05, maxval=1.0, step=0.05, group="Risk Management")
+min_notional_usd = input.float(5.0, "Min Notional USD (exchange floor)", minval=1.0, maxval=50.0, step=0.5, group="Risk Management")
+qty_step = input.float(0.001, "Qty Step (precision)", minval=0.000001, maxval=1.0, step=0.0005, group="Risk Management")
+use_fib_tp_optimization = input.bool(true, "Use Fibonacci TP Optimization", group="Risk Management")
+
+// === MOMENTUM INDICATORS ===
+ema_fast_period = input.int(9, "EMA Fast Period", minval=1, maxval=50, group="Momentum Indicators")
+ema_slow_period = input.int(21, "EMA Slow Period", minval=1, maxval=100, group="Momentum Indicators")
+ema_trend_period = input.int(50, "EMA Trend Period", minval=1, maxval=200, group="Momentum Indicators")
+atr_period = input.int(14, "ATR Period", minval=1, maxval=50, group="Momentum Indicators")
+atr_threshold = input.float(1.5, "ATR Threshold", minval=0.5, maxval=5.0, step=0.1, group="Momentum Indicators")
+rsi_period = input.int(14, "RSI Period", minval=1, maxval=50, group="Momentum Indicators")
+rsi_overbought = input.float(70.0, "RSI Overbought", minval=60.0, maxval=90.0, step=1.0, group="Momentum Indicators")
+rsi_oversold = input.float(30.0, "RSI Oversold", minval=10.0, maxval=40.0, step=1.0, group="Momentum Indicators")
+macd_fast = input.int(12, "MACD Fast", minval=1, maxval=50, group="Momentum Indicators")
+macd_slow = input.int(26, "MACD Slow", minval=1, maxval=100, group="Momentum Indicators")
+macd_signal = input.int(9, "MACD Signal", minval=1, maxval=50, group="Momentum Indicators")
+
+// === ALERT SETTINGS ===
+enable_entry_alerts = input.bool(true, "Enable Entry Alerts", group="Alert Settings")
+enable_exit_alerts = input.bool(true, "Enable Exit Alerts", group="Alert Settings")
+enable_sr_break_alerts = input.bool(true, "Enable S/R Break Alerts", group="Alert Settings")
+enable_market_alerts = input.bool(false, "Enable Market Condition Alerts", group="Alert Settings")
+enable_risk_alerts = input.bool(true, "Enable Risk Management Alerts", group="Alert Settings")
+webhook_secret = input.string("", "Webhook Secret", group="Alert Settings")
+
+// === SIMPLE MODE SETTINGS ===
+enable_simple_mode = input.bool(false, "Enable Simple Mode", group="Simple Mode")
+simple_mode_version = input.string("V1", "Simple Mode Version", options=["V1", "V2", "V3"], group="Simple Mode")
+enable_aggressive_mode = input.bool(false, "Enable Aggressive Mode", group="Simple Mode")
+enable_debug_mode = input.bool(false, "Enable Debug Mode", group="Simple Mode")
+
+// === VISUAL DISPLAY SETTINGS ===
+show_sizing_debug = input.bool(false, "Show Sizing Debug", group="Visual Display")
+show_emas = input.bool(true, "Show EMAs", group="Visual Display")
+show_atr = input.bool(false, "Show ATR", group="Visual Display")
+show_mtf_trend = input.bool(true, "Show Multi-Timeframe Trend", group="Visual Display")
+show_sr_zones = input.bool(true, "Show S/R Zones", group="Visual Display")
+show_sr_levels = input.bool(true, "Show S/R Levels", group="Visual Display")
+show_entry_signals = input.bool(true, "Show Entry Signals", group="Visual Display")
+show_position_labels = input.bool(true, "Show Position Labels", group="Visual Display")
+show_performance_table = input.bool(true, "Show Performance Table", group="Visual Display")
+
+// ===============================================================================
+// INDICATOR CALCULATIONS
+// ===============================================================================
+
+ema_fast_line = ta.ema(close, ema_fast_period)
+ema_slow_line = ta.ema(close, ema_slow_period)
+ema_trend_line = ta.ema(close, ema_trend_period)
+atr = ta.atr(atr_period)
+atr_normalized = atr / close * 100
+dynamic_atr_threshold = atr_normalized > 2.0 ? atr_threshold * 1.5 : atr_threshold
+rsi_current = ta.rsi(close, rsi_period)
+[macd_line, signal_line, macd_histogram] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+
+// === ULTIMATE SIMPLE MODE INDICATORS ===
+simple_ema50 = ta.ema(close, 50)  // For V3 triple EMA
+
+// ===============================================================================
+// MULTI-TIMEFRAME ANALYSIS
+// ===============================================================================
+
+ema_fast_htf = request.security(syminfo.tickerid, higher_tf, ta.ema(close, ema_fast_period))
+ema_slow_htf = request.security(syminfo.tickerid, higher_tf, ta.ema(close, ema_slow_period))
+ema_trend_htf = request.security(syminfo.tickerid, higher_tf, ta.ema(close, ema_trend_period))
+rsi_htf = request.security(syminfo.tickerid, higher_tf, ta.rsi(close, rsi_period))
+[macd_line_htf, signal_line_htf, macd_histogram_htf] = request.security(syminfo.tickerid, higher_tf, ta.macd(close, macd_fast, macd_slow, macd_signal))
+
+ema_fast_ltf = request.security(syminfo.tickerid, "1", ta.ema(close, ema_fast_period))
+ema_slow_ltf = request.security(syminfo.tickerid, "1", ta.ema(close, ema_slow_period))
+
+ema_alignment_bullish = ema_fast_line > ema_slow_line and ema_slow_line > ema_trend_line
+ema_alignment_bearish = ema_fast_line < ema_slow_line and ema_slow_line < ema_trend_line
+htf_bullish_trend = ema_fast_htf > ema_slow_htf and ema_slow_htf > ema_trend_htf
+htf_bearish_trend = ema_fast_htf < ema_slow_htf and ema_slow_htf < ema_trend_htf
+ltf_bullish_cross = ta.crossover(ema_fast_ltf, ema_slow_ltf)
+ltf_bearish_cross = ta.crossunder(ema_fast_ltf, ema_slow_ltf)
+
+rsi_bullish = rsi_current > 50 and rsi_current < rsi_overbought and rsi_htf > 45
+rsi_bearish = rsi_current < 50 and rsi_current > rsi_oversold and rsi_htf < 55
+macd_bullish = macd_line > signal_line and macd_histogram > 0 and macd_line_htf > signal_line_htf
+macd_bearish = macd_line < signal_line and macd_histogram < 0 and macd_line_htf < signal_line_htf
+volatility_ok = atr_normalized >= (dynamic_atr_threshold * 0.7) and atr_normalized <= 6.0  // Relaxed volatility range
+
+// ===============================================================================
+// ENHANCED FIBONACCI RETRACEMENT CALCULATIONS
+// ===============================================================================
+
+// === FIBONACCI LEVEL CONSTANTS ===
+FIB_0 = 0.0
+FIB_236 = 0.236
+FIB_382 = 0.382
+FIB_500 = 0.500
+FIB_618 = 0.618
+FIB_786 = 0.786
+FIB_1000 = 1.000
+// Extensions
+FIB_1272 = 1.272
+FIB_1618 = 1.618
+FIB_2618 = 2.618
+
+// === SWING DETECTION FUNCTIONS ===
+detect_swing_high() =>
+    ta.pivothigh(high, int(lookback_period/2), int(lookback_period/2))
+
+detect_swing_low() =>
+    ta.pivotlow(low, int(lookback_period/2), int(lookback_period/2))
+
+// === SWING DETECTION ===
+swing_high = detect_swing_high()
+swing_low = detect_swing_low()
+
+// === FIBONACCI LEVEL STORAGE ===
+var float fib_high = na
+var float fib_low = na
+var int fib_high_bar = na
+var int fib_low_bar = na
+var bool fib_direction_up = false  // true for uptrend retracement, false for downtrend retracement
+
+// === UPDATE FIBONACCI LEVELS ===
+if not na(swing_high)
+    fib_high := swing_high
+    fib_high_bar := int(bar_index - fib_lookback/2)
+    
+if not na(swing_low)
+    fib_low := swing_low
+    fib_low_bar := int(bar_index - fib_lookback/2)
+
+// === DETERMINE FIBONACCI DIRECTION ===
+if not na(fib_high) and not na(fib_low)
+    fib_direction_up := fib_low_bar > fib_high_bar  // More recent low = uptrend retracement
+
+// === CALCULATE FIBONACCI LEVELS ===
+fib_range = not na(fib_high) and not na(fib_low) ? math.abs(fib_high - fib_low) : na
+fib_base = fib_direction_up ? fib_low : fib_high
+
+// Retracement levels
+fib_level_0 = fib_base
+fib_level_236 = fib_direction_up ? fib_base + (fib_range * FIB_236) : fib_base - (fib_range * FIB_236)
+fib_level_382 = fib_direction_up ? fib_base + (fib_range * FIB_382) : fib_base - (fib_range * FIB_382)
+fib_level_500 = fib_direction_up ? fib_base + (fib_range * FIB_500) : fib_base - (fib_range * FIB_500)
+fib_level_618 = fib_direction_up ? fib_base + (fib_range * FIB_618) : fib_base - (fib_range * FIB_618)
+fib_level_786 = fib_direction_up ? fib_base + (fib_range * FIB_786) : fib_base - (fib_range * FIB_786)
+fib_level_100 = fib_direction_up ? fib_high : fib_low
+
+// Extension levels
+fib_ext_1272 = fib_direction_up ? fib_base + (fib_range * FIB_1272) : fib_base - (fib_range * FIB_1272)
+fib_ext_1618 = fib_direction_up ? fib_base + (fib_range * FIB_1618) : fib_base - (fib_range * FIB_1618)
+fib_ext_2618 = fib_direction_up ? fib_base + (fib_range * FIB_2618) : fib_base - (fib_range * FIB_2618)
+
+// === FIBONACCI PROXIMITY DETECTION ===
+fib_tolerance = close * 0.3 / 100  // 0.3% tolerance for Fibonacci levels
+near_fib_236 = not na(fib_level_236) and math.abs(close - fib_level_236) <= fib_tolerance
+near_fib_382 = not na(fib_level_382) and math.abs(close - fib_level_382) <= fib_tolerance
+near_fib_500 = not na(fib_level_500) and math.abs(close - fib_level_500) <= fib_tolerance
+near_fib_618 = not na(fib_level_618) and math.abs(close - fib_level_618) <= fib_tolerance
+near_fib_786 = not na(fib_level_786) and math.abs(close - fib_level_786) <= fib_tolerance
+
+// ===============================================================================
+// ENHANCED SUPPORT/RESISTANCE DETECTION
+// ===============================================================================
+
+// === ENHANCED S/R TYPE WITH VOLUME AND AGE (DEFINED EARLIER) ===
+
+// === ENHANCED S/R FUNCTIONS ===
+
+// === VOLUME-WEIGHTED STRENGTH CALCULATION ===
+get_volume_weighted_strength(level, tolerance_pct) =>
+    tolerance = level * tolerance_pct / 100
+    touches = 0
+    last_touch = 0
+    volume_sum = 0.0
+    total_volume = 0.0
+    
+    for i = 1 to lookback_period
+        total_volume += volume[i]
+        if math.abs(close[i] - level) <= tolerance
+            touches += 1
+            last_touch := i
+            volume_sum += volume[i]
+    
+    volume_weight = total_volume > 0 ? volume_sum / total_volume : 0.0
+    [touches, last_touch, volume_weight]
+
+// === ENHANCED S/R LEVEL TYPE DEFINITION ===
+// Pine v5 does not support custom typed arrays. Replace custom type with parallel arrays.
+// === ENHANCED S/R ARRAYS (parallel arrays) ===
+var sup_levels = array.new_float()
+var sup_touches = array.new_int()
+var sup_last_touch = array.new_int()
+var sup_volume_weight = array.new_float()
+var sup_strength = array.new_float()
+var sup_age = array.new_int()
+
+var res_levels = array.new_float()
+var res_touches = array.new_int()
+var res_last_touch = array.new_int()
+var res_volume_weight = array.new_float()
+var res_strength = array.new_float()
+var res_age = array.new_int()
+
+// Arrays defined above
+
+// === STRENGTH SCORE CALCULATION ===
+calculate_strength_score(touches, volume_weight, age_bars) =>
+    base_score = touches * 10.0
+    volume_bonus = enable_volume_weighted_sr ? volume_weight * 50.0 : 0.0
+    age_penalty = age_bars > lookback_period ? (age_bars - lookback_period) * 0.5 : 0.0
+    math.max(0, base_score + volume_bonus - age_penalty)
+
+// === ENHANCED PIVOT DETECTION ===
+pivot_high_enhanced = ta.pivothigh(high, int(lookback_period/2), int(lookback_period/2))
+pivot_low_enhanced = ta.pivotlow(low, int(lookback_period/2), int(lookback_period/2))
+
+// === ADD ENHANCED S/R LEVELS ===
+add_enhanced_level(_is_res, _price) =>
+    [touches, last_touch, volume_weight] = get_volume_weighted_strength(_price, sr_tolerance)
+    if touches >= min_touches or not sr_strength_filter
+        // Choose arrays
+        levels = _is_res ? res_levels : sup_levels
+        touches_arr = _is_res ? res_touches : sup_touches
+        last_arr = _is_res ? res_last_touch : sup_last_touch
+        vol_arr = _is_res ? res_volume_weight : sup_volume_weight
+        strength_arr = _is_res ? res_strength : sup_strength
+        age_arr = _is_res ? res_age : sup_age
+        // Add new level
+        age_bars = 0
+        strength_score = calculate_strength_score(touches, volume_weight, age_bars)
+        array.push(levels, _price)
+        array.push(touches_arr, touches)
+        array.push(last_arr, last_touch)
+        array.push(vol_arr, volume_weight)
+        array.push(strength_arr, strength_score)
+        array.push(age_arr, age_bars)
+        // Merging logic (bounded loop to replace unsupported 'while')
+        merge_again = true
+        max_iters = array.size(levels) > 1 ? array.size(levels) : 0
+        for attempt = 0 to max_iters - 1
+            if not merge_again or array.size(levels) <= 1
+                break
+            merge_again := false
+            sz = array.size(levels)
+            for i = 0 to sz - 2
+                if i >= array.size(levels) - 1
+                    break
+                lvl_i_price = array.get(levels, i)
+                lvl_i_strength = array.get(strength_arr, i)
+                lvl_i_touches = array.get(touches_arr, i)
+                lvl_i_vol = array.get(vol_arr, i)
+                lvl_i_last = array.get(last_arr, i)
+                lvl_i_age = array.get(age_arr, i)
+                for j = i + 1 to array.size(levels) - 1
+                    if j < array.size(levels)
+                        lvl_j_price = array.get(levels, j)
+                        lvl_j_strength = array.get(strength_arr, j)
+                        lvl_j_touches = array.get(touches_arr, j)
+                        lvl_j_vol = array.get(vol_arr, j)
+                        lvl_j_last = array.get(last_arr, j)
+                        lvl_j_age = array.get(age_arr, j)
+                        dist_pct = math.abs(lvl_i_price - lvl_j_price) / lvl_i_price * 100
+                        if dist_pct <= sr_merge_threshold
+                            total_strength = lvl_i_strength + lvl_j_strength
+                            merged_price = total_strength > 0 ? (lvl_i_price * lvl_i_strength + lvl_j_price * lvl_j_strength) / total_strength : (lvl_i_price + lvl_j_price) / 2
+                            merged_touches = lvl_i_touches + lvl_j_touches
+                            merged_volume_weight = (lvl_i_vol + lvl_j_vol) / 2
+                            merged_last_touch = math.min(lvl_i_last, lvl_j_last)
+                            merged_age = math.min(lvl_i_age, lvl_j_age)
+                            merged_strength = calculate_strength_score(merged_touches, merged_volume_weight, merged_age)
+                            // Set merged into i
+                            array.set(levels, i, merged_price)
+                            array.set(touches_arr, i, merged_touches)
+                            array.set(last_arr, i, merged_last_touch)
+                            array.set(vol_arr, i, merged_volume_weight)
+                            array.set(strength_arr, i, merged_strength)
+                            array.set(age_arr, i, merged_age)
+                            // Remove j from all arrays
+                            array.remove(levels, j)
+                            array.remove(touches_arr, j)
+                            array.remove(last_arr, j)
+                            array.remove(vol_arr, j)
+                            array.remove(strength_arr, j)
+                            array.remove(age_arr, j)
+                            merge_again := true
+                            break
+                if merge_again
+                    break
+        // Trim to max levels by strength
+        max_trim_iters = max_sr_levels > 0 ? max_sr_levels : 10
+        for trim_iter = 0 to max_trim_iters - 1
+            if array.size(levels) <= max_sr_levels
+                break
+            weakest_idx = 0
+            weakest_strength = array.get(strength_arr, 0)
+            for k = 1 to array.size(levels) - 1
+                current_strength = array.get(strength_arr, k)
+                if current_strength < weakest_strength
+                    weakest_strength := current_strength
+                    weakest_idx := k
+            array.remove(levels, weakest_idx)
+            array.remove(touches_arr, weakest_idx)
+            array.remove(last_arr, weakest_idx)
+            array.remove(vol_arr, weakest_idx)
+            array.remove(strength_arr, weakest_idx)
+            array.remove(age_arr, weakest_idx)
+        // Age update and cleanup
+        for k = 0 to array.size(levels) - 1
+            item_age = array.get(age_arr, k) + 1
+            item_touches = array.get(touches_arr, k)
+            item_vol = array.get(vol_arr, k)
+            new_strength = calculate_strength_score(item_touches, item_vol, item_age)
+            array.set(age_arr, k, item_age)
+            array.set(strength_arr, k, new_strength)
+
+if not na(pivot_high_enhanced)
+    add_enhanced_level(true, pivot_high_enhanced)
+if not na(pivot_low_enhanced)
+    add_enhanced_level(false, pivot_low_enhanced)
+
+// === ENHANCED NEAREST S/R FUNCTIONS ===
+get_nearest_enhanced_support() =>
+    float ns = na
+    float md = 10e10
+    float strength = 0.0
+    if array.size(sup_levels) > 0
+        for i = 0 to array.size(sup_levels) - 1
+            lvl_price = array.get(sup_levels, i)
+            lvl_strength = array.get(sup_strength, i)
+            if lvl_price < close
+                d = math.abs(close - lvl_price)
+                if d < md or (d == md and lvl_strength > strength)
+                    md := d
+                    ns := lvl_price
+                    strength := lvl_strength
+    [ns, strength]
+
+get_nearest_enhanced_resistance() =>
+    float nr = na
+    float md = 10e10
+    float strength = 0.0
+    if array.size(res_levels) > 0
+        for i = 0 to array.size(res_levels) - 1
+            lvl_price = array.get(res_levels, i)
+            lvl_strength = array.get(res_strength, i)
+            if lvl_price > close
+                d = math.abs(close - lvl_price)
+                if d < md or (d == md and lvl_strength > strength)
+                    md := d
+                    nr := lvl_price
+                    strength := lvl_strength
+    [nr, strength]
+
+[cached_support, support_strength] = get_nearest_enhanced_support()
+[cached_resistance, resistance_strength] = get_nearest_enhanced_resistance()
+
+// === ENHANCED PROXIMITY CONDITIONS ===
+// Using near_support and near_resistance definitions from earlier in the file
+
+// === S/R BREAK/HOLD DETECTION ===
+var bool support_broken = false
+var bool resistance_broken = false
+var int support_break_bars = 0
+var int resistance_break_bars = 0
+
+// Support break detection
+if near_support and close < cached_support
+    if not support_broken
+        support_broken := true
+        support_break_bars := 0
+    else
+        support_break_bars += 1
+else if support_broken and support_break_bars >= sr_break_confirmation_bars
+    support_broken := false
+    support_break_bars := 0
+
+// Resistance break detection  
+if near_resistance and close > cached_resistance
+    if not resistance_broken
+        resistance_broken := true
+        resistance_break_bars := 0
+    else
+        resistance_break_bars += 1
+else if resistance_broken and resistance_break_bars >= sr_break_confirmation_bars
+    resistance_broken := false
+    resistance_break_bars := 0
+
+// === HTF S/R LEVELS ===
+htf_support = request.security(syminfo.tickerid, higher_tf, cached_support)
+htf_resistance = request.security(syminfo.tickerid, higher_tf, cached_resistance)
+near_htf_support = not na(htf_support) and math.abs(close - htf_support) <= (close * sr_tolerance / 100)
+near_htf_resistance = not na(htf_resistance) and math.abs(close - htf_resistance) <= (close * sr_tolerance / 100)
+
+pullback_to_support = not na(cached_support) and close > cached_support and close[1] <= cached_support and near_support
+pullback_to_resistance = not na(cached_resistance) and close < cached_resistance and close[1] >= cached_resistance and near_resistance
+
+// === FIBONACCI + S/R CONFLUENCE ===
+fib_sr_confluence_support = near_support and (near_fib_236 or near_fib_382 or near_fib_500 or near_fib_618 or near_fib_786)
+fib_sr_confluence_resistance = near_resistance and (near_fib_236 or near_fib_382 or near_fib_500 or near_fib_618 or near_fib_786)
+
+// ===============================================================================
+// RISK MANAGEMENT & POSITION SIZING (keeping original logic)
+// ===============================================================================
+
+var float daily_risk_used = 0.0
+var float daily_risk_percent = 0.0
+var int last_reset_dom = dayofmonth(time)
+var int last_reset_year = year(time)
+if dayofmonth(time) != last_reset_dom or year(time) != last_reset_year
+    daily_risk_used := 0.0
+    last_reset_dom := dayofmonth(time)
+    last_reset_year := year(time)
+
+daily_risk_percent := daily_risk_used
+
+// IMPROVED: Market Hours Filter (RELAXED FOR CRYPTO SCALPING)
+// Only block major volatility spikes, crypto trades 24/7
+current_hour = hour(time)
+safe_trading_hours = not (current_hour >= 21 and current_hour <= 22)  // Only block 1 hour around US close
+
+long_trend_ok = enable_mtf_filter ? htf_bullish_trend : true
+short_trend_ok = enable_mtf_filter ? htf_bearish_trend : true
+
+// Enhanced entry conditions with Fibonacci confluence + Market Hours Filter
+// Break down long conditions into smaller parts to avoid line length issues
+basic_long_conditions = is_bnb and ema_alignment_bullish and long_trend_ok and (rsi_bullish or macd_bullish) and volatility_ok and safe_trading_hours
+sr_fib_long_conditions = (near_support or near_htf_support or pullback_to_support or fib_sr_confluence_support)
+risk_long_conditions = (ltf_bullish_cross or ema_fast_line > ema_slow_line) and daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+basic_short_conditions = is_bnb and ema_alignment_bearish and short_trend_ok and (rsi_bearish or macd_bearish) and volatility_ok and safe_trading_hours
+sr_fib_short_conditions = (near_resistance or near_htf_resistance or pullback_to_resistance or fib_sr_confluence_resistance)
+risk_short_conditions = (ltf_bearish_cross or ema_fast_line < ema_slow_line) and daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+// AGGRESSIVE MODE: Simplified conditions for testing
+if enable_aggressive_mode
+    basic_long_conditions := ema_fast_line > ema_slow_line and safe_trading_hours and volatility_ok
+    sr_fib_long_conditions := true  // Always true in aggressive mode
+    risk_long_conditions := daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+    
+    basic_short_conditions := ema_fast_line < ema_slow_line and safe_trading_hours and volatility_ok
+    sr_fib_short_conditions := true  // Always true in aggressive mode  
+    risk_short_conditions := daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+long_entry_conditions = basic_long_conditions and sr_fib_long_conditions and risk_long_conditions
+short_entry_conditions = basic_short_conditions and sr_fib_short_conditions and risk_short_conditions
+
+// Enhanced confluence scoring with Fibonacci
+ema_comp_long = ema_alignment_bullish ? 1.0 : 0.0
+ema_comp_short = ema_alignment_bearish ? 1.0 : 0.0
+htf_comp_long = htf_bullish_trend ? 1.0 : htf_bearish_trend ? 0.0 : 0.5
+htf_comp_short = htf_bearish_trend ? 1.0 : htf_bullish_trend ? 0.0 : 0.5
+mom_comp_long = (macd_bullish and rsi_bullish) ? 1.0 : (macd_bullish or rsi_bullish) ? 0.6 : 0.0
+mom_comp_short = (macd_bearish and rsi_bearish) ? 1.0 : (macd_bearish or rsi_bearish) ? 0.6 : 0.0
+sr_comp_long = (near_support and near_htf_support) ? 1.0 : (near_support or near_htf_support) ? 0.6 : 0.0
+sr_comp_short = (near_resistance and near_htf_resistance) ? 1.0 : (near_resistance or near_htf_resistance) ? 0.6 : 0.0
+fib_comp_long = fib_sr_confluence_support ? 0.8 : (near_fib_382 or near_fib_618) ? 0.4 : 0.0
+fib_comp_short = fib_sr_confluence_resistance ? 0.8 : (near_fib_382 or near_fib_618) ? 0.4 : 0.0
+vol_comp = volatility_ok ? 1.0 : 0.0
+
+confluence_long = (ema_comp_long + htf_comp_long + mom_comp_long + sr_comp_long + fib_comp_long + vol_comp) / 6.0
+confluence_short = (ema_comp_short + htf_comp_short + mom_comp_short + sr_comp_short + fib_comp_short + vol_comp) / 6.0
+
+// IMPROVED: RELAXED threshold for more scalping opportunities
+confluence_threshold = enable_aggressive_mode ? 0.25 : 0.50  // Ultra low in aggressive mode
+long_signal = long_entry_conditions and confluence_long >= confluence_threshold
+short_signal = short_entry_conditions and confluence_short >= confluence_threshold
+
+// === SIMPLE MODE CONDITIONS (DECLARE EARLY FOR STRATEGY USE) ===
+simple_long_signal = enable_aggressive_mode and ta.crossover(ema_fast_line, ema_slow_line) and strategy.position_size == 0
+simple_short_signal = enable_aggressive_mode and ta.crossunder(ema_fast_line, ema_slow_line) and strategy.position_size == 0
+
+// Position sizing calculations (keeping original enhanced logic)
+volatility_multiplier = atr_normalized <= 1.0 ? 1.2 : atr_normalized <= 2.0 ? 1.0 : 0.8
+base_position_size = (strategy.equity * risk_per_trade / 100) * volatility_multiplier
+stop_loss_atr_multiplier = atr_normalized <= 1.5 ? 1.5 : atr_normalized <= 2.5 ? 2.0 : 2.5
+adjusted_sl_distance_long = atr * stop_loss_atr_multiplier
+adjusted_sl_distance_short = atr * stop_loss_atr_multiplier
+
+// Enhanced take profit with Fibonacci targets
+calculate_fib_take_profit_long() =>
+    // SIMPLIFIED: Always use ATR-based TP for reliability
+    close + (adjusted_sl_distance_long * risk_reward_ratio)
+
+calculate_fib_take_profit_short() =>
+    // SIMPLIFIED: Always use ATR-based TP for reliability  
+    close - (adjusted_sl_distance_short * risk_reward_ratio)
+
+long_take_profit = calculate_fib_take_profit_long()
+short_take_profit = calculate_fib_take_profit_short()
+
+long_position_size = base_position_size / adjusted_sl_distance_long
+short_position_size = base_position_size / adjusted_sl_distance_short
+
+profit_per_unit_long = long_take_profit - close
+profit_per_unit_short = close - short_take_profit
+small_profit_long = profit_per_unit_long <= close * (min_profit_tick_ratio / 100.0)
+small_profit_short = profit_per_unit_short <= close * (min_profit_tick_ratio / 100.0)
+qty_target_long = profit_per_unit_long > 0 ? target_profit_usd / profit_per_unit_long : long_position_size
+qty_target_short = profit_per_unit_short > 0 ? target_profit_usd / profit_per_unit_short : short_position_size
+hybrid_long_qty = enable_hybrid_qty ? math.min(long_position_size, qty_target_long) : long_position_size
+hybrid_short_qty = enable_hybrid_qty ? math.min(short_position_size, qty_target_short) : short_position_size
+hybrid_long_qty := hybrid_long_qty <= 0 ? long_position_size : hybrid_long_qty
+hybrid_short_qty := hybrid_short_qty <= 0 ? short_position_size : hybrid_short_qty
+
+round_qty(q) =>
+    step = qty_step
+    step > 0 ? math.floor(q / step) * step : q
+
+normalize_qty(q) =>
+    mn = min_notional_usd / close
+    q_adj = math.max(q, mn)
+    round_qty(q_adj)
+
+hybrid_long_qty := normalize_qty(hybrid_long_qty)
+hybrid_short_qty := normalize_qty(hybrid_short_qty)
+
+expected_profit_long = profit_per_unit_long * hybrid_long_qty
+expected_profit_short = profit_per_unit_short * hybrid_short_qty
+
+if show_sizing_debug and barstate.islast and strategy.position_size == 0
+    expected_long_nominal_profit = profit_per_unit_long * hybrid_long_qty
+    expected_short_nominal_profit = profit_per_unit_short * hybrid_short_qty
+    dbg = "SZ DBG"
+    dbg := dbg + "\nLqty:" + str.tostring(hybrid_long_qty, "#.####")
+    dbg := dbg + "\nSqty:" + str.tostring(hybrid_short_qty, "#.####")
+    dbg := dbg + "\nLprof:" + str.tostring(expected_long_nominal_profit, "#.##")
+    dbg := dbg + "\nSprof:" + str.tostring(expected_short_nominal_profit, "#.##")
+    label.new(bar_index, high, dbg, style=label.style_label_down, color=color.new(color.blue, 75), textcolor=color.white, size=size.tiny)
+
+var float trailing_stop_long = na
+var float trailing_stop_short = na
+
+if strategy.position_size > 0 and use_trailing_stop
+    trail_distance = close * trailing_stop_pct / 100
+    trailing_stop_long := math.max(nz(trailing_stop_long), close - trail_distance)
+
+if strategy.position_size < 0 and use_trailing_stop
+    trail_distance = close * trailing_stop_pct / 100
+    trailing_stop_short := math.min(nz(trailing_stop_short), close + trail_distance)
+
+if strategy.position_size == 0
+    trailing_stop_long := na
+    trailing_stop_short := na
+
+// ===============================================================================
+// ULTRA SIMPLIFIED STRATEGY EXECUTION (EMERGENCY FIX)
+// ===============================================================================
+
+// EMERGENCY: Ultra simple approach to guarantee trades
+if enable_aggressive_mode
+    // Use pre-calculated simple signals
+    if simple_long_signal
+        strategy.entry("Simple_Long", strategy.long, qty=0.01)  // Fixed tiny quantity
+        strategy.exit("Simple_Long_Exit", "Simple_Long", 
+                     stop=close * 0.98, 
+                     limit=close * 1.04)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SIMPLE","event":"LONG_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+    
+    if simple_short_signal
+        strategy.entry("Simple_Short", strategy.short, qty=0.01)  // Fixed tiny quantity
+        strategy.exit("Simple_Short_Exit", "Simple_Short", 
+                     stop=close * 1.02, 
+                     limit=close * 0.96)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SIMPLE","event":"SHORT_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+else
+    // SIMPLIFIED NORMAL MODE  
+    if long_signal
+        strategy.entry("Long", strategy.long, qty=0.01)  // Fixed quantity
+        strategy.exit("Long Exit", "Long", stop=close * 0.98, limit=close * 1.04)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SR_FIB","event":"LONG_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+    if short_signal
+        strategy.entry("Short", strategy.short, qty=0.01)  // Fixed quantity
+        strategy.exit("Short Exit", "Short", stop=close * 1.02, limit=close * 0.96)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SR_FIB","event":"SHORT_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+// EMERGENCY TEST: Simple trend following (always active)
+emergency_test_mode = input.bool(false, "EMERGENCY TEST: Basic Trend Following", group="Alert Settings")
+if emergency_test_mode
+    basic_long = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+    basic_short = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+    
+    if basic_long
+        strategy.entry("Emergency_Long", strategy.long, qty=0.01)
+        strategy.exit("Emergency_Long_Exit", "Emergency_Long", stop=close*0.99, limit=close*1.02)
+    
+    if basic_short
+        strategy.entry("Emergency_Short", strategy.short, qty=0.01)
+        strategy.exit("Emergency_Short_Exit", "Emergency_Short", stop=close*1.01, limit=close*0.98)
+
+// ===============================================================================
+// 🚀 ULTIMATE SIMPLE MODE (PROVEN TRADING LOGIC)
+// ===============================================================================
+
+if enable_simple_mode
+    // === SIMPLE MODE V1 - BASIC EMA (150 trades proven) ===
+    if simple_mode_version == "V1 - Basic"
+        simple_v1_long = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+        simple_v1_short = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+        
+        if simple_v1_long
+            strategy.entry("Simple_V1_Long", strategy.long, qty=0.01)
+            strategy.exit("Simple_V1_Long_Exit", "Simple_V1_Long", stop=close*0.99, limit=close*1.02)
+        
+        if simple_v1_short
+            strategy.entry("Simple_V1_Short", strategy.short, qty=0.01)
+            strategy.exit("Simple_V1_Short_Exit", "Simple_V1_Short", stop=close*1.01, limit=close*0.98)
+    
+    // === SIMPLE MODE V3 - TRIPLE EMA + RSI (Quality filtered) ===
+    if simple_mode_version == "V3 - Triple EMA"
+        // Triple EMA confluence 
+        simple_v3_strong_up = close > ema_fast_line and ema_fast_line > ema_slow_line and ema_slow_line > simple_ema50
+        simple_v3_strong_down = close < ema_fast_line and ema_fast_line < ema_slow_line and ema_slow_line < simple_ema50
+        
+        // Smart RSI ranges
+        simple_v3_good_momentum_long = rsi_current > 40 and rsi_current < 80
+        simple_v3_good_momentum_short = rsi_current < 60 and rsi_current > 20
+        
+        // Final conditions
+        simple_v3_long = simple_v3_strong_up and simple_v3_good_momentum_long and strategy.position_size == 0
+        simple_v3_short = simple_v3_strong_down and simple_v3_good_momentum_short and strategy.position_size == 0
+        
+        if simple_v3_long
+            strategy.entry("Simple_V3_Long", strategy.long, qty=0.01)
+            strategy.exit("Simple_V3_Long_Exit", "Simple_V3_Long", stop=close*0.98, limit=close*1.04)  // 2% SL, 4% TP
+        
+        if simple_v3_short
+            strategy.entry("Simple_V3_Short", strategy.short, qty=0.01)
+            strategy.exit("Simple_V3_Short_Exit", "Simple_V3_Short", stop=close*1.02, limit=close*0.96)  // 2% SL, 4% TP
+
+if strategy.position_size > 0 and use_trailing_stop and not na(trailing_stop_long)
+    strategy.exit("Long Trailing", "Long", stop=trailing_stop_long)
+
+if strategy.position_size < 0 and use_trailing_stop and not na(trailing_stop_short)
+    strategy.exit("Short Trailing", "Short", stop=trailing_stop_short)
+
+// ===============================================================================
+// ENHANCED VISUALIZATION
+// ===============================================================================
+
+// === EMA PLOTS (unchanged) ===
+plot(show_emas ? ema_fast_line : na, "Fast EMA", color=color.blue, linewidth=1)
+plot(show_emas ? ema_slow_line : na, "Slow EMA", color=color.orange, linewidth=1)
+plot(show_emas ? ema_trend_line : na, "Trend EMA", color=color.red, linewidth=1)
+
+// === ATR BANDS ===
+plot(show_atr ? close + atr : na, "ATR Upper", color=color.new(color.gray, 70), linewidth=1, style=plot.style_cross)
+plot(show_atr ? close - atr : na, "ATR Lower", color=color.new(color.gray, 70), linewidth=1, style=plot.style_cross)
+
+// === MTF TREND BACKGROUND ===
+bgcolor(show_mtf_trend ? (htf_bullish_trend ? color.new(color.green, 92) : htf_bearish_trend ? color.new(color.red, 92) : na) : na)
+
+// ===============================================================================
+// FIBONACCI VISUALIZATION
+// ===============================================================================
+
+var line fib_line_0 = na
+var line fib_line_236 = na
+var line fib_line_382 = na
+var line fib_line_500 = na
+var line fib_line_618 = na
+var line fib_line_786 = na
+var line fib_line_100 = na
+var line fib_line_ext_1272 = na
+var line fib_line_ext_1618 = na
+
+// === FIBONACCI RETRACEMENT LINES ===
+if enable_fibonacci and show_fib_levels and not na(fib_range)
+    // Update existing lines or create new ones
+    fib_start_bar = math.min(nz(fib_high_bar), nz(fib_low_bar))
+    fib_end_bar = bar_index + fib_extend_right
+    
+    // 0% level
+    if na(fib_line_0)
+        fib_line_0 := line.new(fib_start_bar, fib_level_0, fib_end_bar, fib_level_0, color=color.new(color.gray, 30), width=fib_line_width, style=line.style_dashed)
+    else
+        line.set_xy1(fib_line_0, fib_start_bar, fib_level_0)
+        line.set_xy2(fib_line_0, fib_end_bar, fib_level_0)
+    
+    // 23.6% level
+    if na(fib_line_236)
+        fib_line_236 := line.new(fib_start_bar, fib_level_236, fib_end_bar, fib_level_236, color=color.new(color.red, 40), width=fib_line_width, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_236, fib_start_bar, fib_level_236)
+        line.set_xy2(fib_line_236, fib_end_bar, fib_level_236)
+    
+    // 38.2% level
+    if na(fib_line_382)
+        fib_line_382 := line.new(fib_start_bar, fib_level_382, fib_end_bar, fib_level_382, color=color.new(color.orange, 30), width=fib_line_width + 1, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_382, fib_start_bar, fib_level_382)
+        line.set_xy2(fib_line_382, fib_end_bar, fib_level_382)
+    
+    // 50% level
+    if na(fib_line_500)
+        fib_line_500 := line.new(fib_start_bar, fib_level_500, fib_end_bar, fib_level_500, color=color.new(color.blue, 20), width=fib_line_width + 1, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_500, fib_start_bar, fib_level_500)
+        line.set_xy2(fib_line_500, fib_end_bar, fib_level_500)
+    
+    // 61.8% level (Golden Ratio)
+    if na(fib_line_618)
+        fib_line_618 := line.new(fib_start_bar, fib_level_618, fib_end_bar, fib_level_618, color=color.new(color.yellow, 10), width=fib_line_width + 2, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_618, fib_start_bar, fib_level_618)
+        line.set_xy2(fib_line_618, fib_end_bar, fib_level_618)
+    
+    // 78.6% level
+    if na(fib_line_786)
+        fib_line_786 := line.new(fib_start_bar, fib_level_786, fib_end_bar, fib_level_786, color=color.new(color.purple, 40), width=fib_line_width, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_786, fib_start_bar, fib_level_786)
+        line.set_xy2(fib_line_786, fib_end_bar, fib_level_786)
+    
+    // 100% level
+    if na(fib_line_100)
+        fib_line_100 := line.new(fib_start_bar, fib_level_100, fib_end_bar, fib_level_100, color=color.new(color.gray, 30), width=fib_line_width, style=line.style_dashed)
+    else
+        line.set_xy1(fib_line_100, fib_start_bar, fib_level_100)
+        line.set_xy2(fib_line_100, fib_end_bar, fib_level_100)
+
+// === FIBONACCI EXTENSIONS ===
+if enable_fibonacci and show_fib_extensions and not na(fib_range)
+    fib_start_bar = math.min(nz(fib_high_bar), nz(fib_low_bar))
+    fib_end_bar = bar_index + fib_extend_right
+    
+    // 127.2% extension
+    if na(fib_line_ext_1272)
+        fib_line_ext_1272 := line.new(fib_start_bar, fib_ext_1272, fib_end_bar, fib_ext_1272, color=color.new(color.lime, 20), width=fib_line_width + 1, style=line.style_dotted)
+    else
+        line.set_xy1(fib_line_ext_1272, fib_start_bar, fib_ext_1272)
+        line.set_xy2(fib_line_ext_1272, fib_end_bar, fib_ext_1272)
+    
+    // 161.8% extension
+    if na(fib_line_ext_1618)
+        fib_line_ext_1618 := line.new(fib_start_bar, fib_ext_1618, fib_end_bar, fib_ext_1618, color=color.new(color.aqua, 20), width=fib_line_width + 1, style=line.style_dotted)
+    else
+        line.set_xy1(fib_line_ext_1618, fib_start_bar, fib_ext_1618)
+        line.set_xy2(fib_line_ext_1618, fib_end_bar, fib_ext_1618)
+
+// === FIBONACCI LABELS ===
+if enable_fibonacci and show_fib_levels and not na(fib_range) and barstate.islast
+    // Stagger label positions to prevent overlapping
+    label_offset_base = fib_extend_right/2
+    vertical_spacing = (math.abs(fib_level_100 - fib_level_0) * 0.02) // 2% of range for spacing
+    
+    label.new(bar_index + label_offset_base, fib_level_0, "0.0%", style=label.style_label_left, 
+              color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 2, fib_level_236, "23.6%", style=label.style_label_left, 
+              color=color.new(color.red, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 4, fib_level_382, "38.2%", style=label.style_label_left, 
+              color=color.new(color.orange, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 6, fib_level_500, "50.0%", style=label.style_label_left, 
+              color=color.new(color.blue, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 8, fib_level_618, "61.8%", style=label.style_label_left, 
+              color=color.new(color.yellow, 40), textcolor=color.black, size=size.tiny)
+    label.new(bar_index + label_offset_base + 10, fib_level_786, "78.6%", style=label.style_label_left, 
+              color=color.new(color.purple, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 12, fib_level_100, "100%", style=label.style_label_left, 
+              color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+    
+    if show_fib_extensions
+        label.new(bar_index + label_offset_base + 14, fib_ext_1272, "127.2%", style=label.style_label_left, 
+                  color=color.new(color.lime, 60), textcolor=color.black, size=size.tiny)
+        label.new(bar_index + label_offset_base + 16, fib_ext_1618, "161.8%", style=label.style_label_left, 
+                  color=color.new(color.aqua, 60), textcolor=color.black, size=size.tiny)
+
+// ===============================================================================
+// ENHANCED SUPPORT/RESISTANCE VISUALIZATION
+// ===============================================================================
+
+// === DYNAMIC LINE WIDTH CALCULATION ===
+get_dynamic_width(strength) =>
+    if dynamic_line_width
+        strength >= 80 ? 3 : strength >= 60 ? 2 : strength >= 40 ? 1 : 1
+    else
+        1
+
+// === GRADIENT ZONE VISUALIZATION ===
+create_gradient_zone(level_price, zone_width_pct, is_resistance, strength, age) =>
+    if enable_gradient_zones and show_sr_zones
+        zone_width = level_price * zone_width_pct / 100
+        zone_upper = level_price + zone_width/2
+        zone_lower = level_price - zone_width/2
+        
+        // Calculate transparency based on strength and age
+        base_transparency = zone_transparency_start
+        strength_bonus = math.round(strength / 10)  // 0-10 bonus
+        age_penalty = age > 20 ? math.round(age / 5) : 0
+        final_transparency = math.max(zone_transparency_start, math.min(zone_transparency_end, base_transparency - strength_bonus + age_penalty))
+        
+        base_color = is_resistance ? color.red : color.green
+        zone_color = color.new(base_color, final_transparency)
+        border_color = color.new(base_color, math.max(0, final_transparency - 20))
+        
+        // Create multiple gradient boxes for smooth effect
+        for i = 0 to 2
+            gradient_transparency = final_transparency + (i * 5)
+            gradient_zone_width = zone_width * (1 - i * 0.2)
+            gradient_upper = level_price + gradient_zone_width/2
+            gradient_lower = level_price - gradient_zone_width/2
+            
+            box.new(bar_index - lookback_period, gradient_lower, bar_index + 25, gradient_upper,
+                   border_color=color.new(base_color, gradient_transparency),
+                   bgcolor=color.new(base_color, gradient_transparency),
+                   border_width=1)
+
+// === ENHANCED S/R RENDERING ===
+if sr_visual_mode == "Enhanced" or sr_visual_mode == "Gradient Zones"
+    // Support levels (parallel arrays)
+    if array.size(sup_levels) > 0
+        for i = 0 to array.size(sup_levels) - 1
+            lvl_price = array.get(sup_levels, i)
+            lvl_strength = array.get(sup_strength, i)
+            lvl_touches = array.get(sup_touches, i)
+            lvl_vol = array.get(sup_volume_weight, i)
+            lvl_age = array.get(sup_age, i)
+            line_width = get_dynamic_width(lvl_strength)
+            line_transparency = sr_line_transparency
+            
+            // Adjust transparency based on strength
+            if lvl_strength >= 80
+                line_transparency := math.max(0, sr_line_transparency - 10)
+            else if lvl_strength <= 30
+                line_transparency := math.min(70, sr_line_transparency + 20)
+            
+            // Draw support line
+            line.new(bar_index - lookback_period * 2, lvl_price, bar_index + 30, lvl_price, color=color.new(color.green, line_transparency), width=line_width, style=line.style_solid)
+            
+            // Create gradient zone
+            if sr_visual_mode == "Gradient Zones"
+                create_gradient_zone(lvl_price, sr_zone_width, false, lvl_strength, lvl_age)
+            
+            // Enhanced labels
+            if show_sr_labels_enhanced
+                label_text = "S:" + str.tostring(lvl_price, "#.####") + 
+                           "\nT:" + str.tostring(lvl_touches) +
+                           "\nStr:" + str.tostring(lvl_strength, "#.#")
+                if enable_volume_weighted_sr
+                    label_text += "\nVol:" + str.tostring(lvl_vol * 100, "#.#") + "%"
+                
+                label_color = lvl_strength >= 70 ? color.new(color.green, 20) : 
+                             lvl_strength >= 40 ? color.new(color.green, 40) : 
+                             color.new(color.green, 60)
+                
+                // Stagger support labels horizontally to prevent overlap
+                label_x_offset = i * 3  // 3 bars spacing between labels
+                label.new(bar_index + label_x_offset, lvl_price, label_text, 
+                         color=label_color, style=label.style_label_left, 
+                         textcolor=color.white, size=size.tiny)
+    
+    // Resistance levels (parallel arrays)
+    if array.size(res_levels) > 0
+        for i = 0 to array.size(res_levels) - 1
+            lvl_price = array.get(res_levels, i)
+            lvl_strength = array.get(res_strength, i)
+            lvl_touches = array.get(res_touches, i)
+            lvl_vol = array.get(res_volume_weight, i)
+            lvl_age = array.get(res_age, i)
+            line_width = get_dynamic_width(lvl_strength)
+            line_transparency = sr_line_transparency
+            
+            if lvl_strength >= 80
+                line_transparency := math.max(0, sr_line_transparency - 10)
+            else if lvl_strength <= 30
+                line_transparency := math.min(70, sr_line_transparency + 20)
+            
+            // Draw resistance line
+            line.new(bar_index - lookback_period * 2, lvl_price, bar_index + 30, lvl_price, color=color.new(color.red, line_transparency), width=line_width, style=line.style_solid)
+            
+            if sr_visual_mode == "Gradient Zones"
+                create_gradient_zone(lvl_price, sr_zone_width, true, lvl_strength, lvl_age)
+            
+            if show_sr_labels_enhanced
+                label_text = "R:" + str.tostring(lvl_price, "#.####") + 
+                           "\nT:" + str.tostring(lvl_touches) +
+                           "\nStr:" + str.tostring(lvl_strength, "#.#")
+                if enable_volume_weighted_sr
+                    label_text += "\nVol:" + str.tostring(lvl_vol * 100, "#.#") + "%"
+                
+                label_color = lvl_strength >= 70 ? color.new(color.red, 20) : 
+                             lvl_strength >= 40 ? color.new(color.red, 40) : 
+                             color.new(color.red, 60)
+                
+                // Stagger resistance labels horizontally to prevent overlap
+                label_x_offset = i * 3  // 3 bars spacing between labels
+                label.new(bar_index + label_x_offset, lvl_price, label_text, 
+                         color=label_color, style=label.style_label_left, 
+                         textcolor=color.white, size=size.tiny)
+
+// === HTF S/R LEVELS (ENHANCED) ===
+if show_sr_levels and not na(htf_support)
+    line.new(bar_index - lookback_period * 3, htf_support, bar_index + 40, htf_support, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+    label.new(bar_index, htf_support, "HTF Support", color=color.new(color.green, 10), 
+             textcolor=color.white, style=label.style_label_left, size=size.small)
+
+if show_sr_levels and not na(htf_resistance)
+    line.new(bar_index - lookback_period * 3, htf_resistance, bar_index + 40, htf_resistance, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+    label.new(bar_index, htf_resistance, "HTF Resistance", color=color.new(color.red, 10), 
+             textcolor=color.white, style=label.style_label_left, size=size.small)
+
+// ===============================================================================
+// ENHANCED ENTRY SIGNAL VISUALIZATION
+// ===============================================================================
+
+// === CONFLUENCE-BASED SIGNAL TRANSPARENCY ===
+get_signal_color_transparency(confluence_score) =>
+    confluence_score >= 0.8 ? 0 : confluence_score >= 0.6 ? 20 : 40
+
+// === VISUAL SIGNALS ===
+plotshape(simple_long_signal, "🚀 SIMPLE LONG", shape.triangleup, location.belowbar, 
+          color=color.new(color.lime, 0), size=size.large)
+plotshape(simple_short_signal, "🔻 SIMPLE SHORT", shape.triangledown, location.abovebar, 
+          color=color.new(color.red, 0), size=size.large)
+
+// === EMERGENCY TEST MODE SIGNALS ===
+emergency_long_test = emergency_test_mode and close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+emergency_short_test = emergency_test_mode and close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+
+plotshape(emergency_long_test, "🚨 EMERGENCY LONG", shape.circle, location.belowbar, 
+          color=color.new(color.orange, 0), size=size.small)
+plotshape(emergency_short_test, "🚨 EMERGENCY SHORT", shape.circle, location.abovebar, 
+          color=color.new(color.orange, 0), size=size.small)
+
+// === 🚀 ULTIMATE SIMPLE MODE SIGNALS ===
+// V1 Basic signals
+simple_v1_long_signal = is_bnb and enable_simple_mode and simple_mode_version == "V1 - Basic" and close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+simple_v1_short_signal = is_bnb and enable_simple_mode and simple_mode_version == "V1 - Basic" and close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+
+// V3 Triple EMA signals
+simple_v3_long_signal = is_bnb and enable_simple_mode and simple_mode_version == "V3 - Triple EMA" and close > ema_fast_line and ema_fast_line > ema_slow_line and ema_slow_line > simple_ema50 and rsi_current > 40 and rsi_current < 80 and strategy.position_size == 0
+simple_v3_short_signal = is_bnb and enable_simple_mode and simple_mode_version == "V3 - Triple EMA" and close < ema_fast_line and ema_fast_line < ema_slow_line and ema_slow_line < simple_ema50 and rsi_current < 60 and rsi_current > 20 and strategy.position_size == 0
+
+plotshape(simple_v1_long_signal, "🚀 SIMPLE V1 LONG", shape.arrowup, location.belowbar, 
+          color=color.new(color.blue, 0), size=size.normal)
+plotshape(simple_v1_short_signal, "🚀 SIMPLE V1 SHORT", shape.arrowdown, location.abovebar, 
+          color=color.new(color.blue, 0), size=size.normal)
+
+plotshape(simple_v3_long_signal, "🎯 SIMPLE V3 LONG", shape.diamond, location.belowbar, 
+          color=color.new(color.purple, 0), size=size.large)
+plotshape(simple_v3_short_signal, "🎯 SIMPLE V3 SHORT", shape.diamond, location.abovebar, 
+          color=color.new(color.purple, 0), size=size.large)
+
+// === ENHANCED ENTRY ARROWS (NORMAL MODE) ===
+plotshape(show_entry_signals and long_signal and not enable_aggressive_mode, "Enhanced Long Entry",
+          shape.triangleup, location.belowbar,
+          color=color.new(color.lime, get_signal_color_transparency(confluence_long)), 
+          size=size.normal)
+
+plotshape(show_entry_signals and short_signal and not enable_aggressive_mode, "Enhanced Short Entry",
+          shape.triangledown, location.abovebar,
+          color=color.new(color.red, get_signal_color_transparency(confluence_short)), 
+          size=size.normal)
+
+// === FIBONACCI CONFLUENCE MARKERS ===
+plotshape(show_entry_signals and fib_sr_confluence_support, "Fib-SR Long Confluence",
+          shape.diamond, location.belowbar,
+          color=color.new(color.yellow, 30), size=size.tiny)
+
+plotshape(show_entry_signals and fib_sr_confluence_resistance, "Fib-SR Short Confluence",
+          shape.diamond, location.abovebar,
+          color=color.new(color.yellow, 30), size=size.tiny)
+
+// === DETAILED ENTRY LABELS WITH FIBONACCI INFO ===
+if show_entry_signals and long_signal
+    label_text = "🚀 LONG ENTRY\n" +
+                 "Price: $" + str.tostring(close, "#.####") +
+                 "\nSL: $" + str.tostring(close - adjusted_sl_distance_long, "#.####") +
+                 "\nTP: $" + str.tostring(long_take_profit, "#.####") +
+                 "\nConfluence: " + str.tostring(confluence_long * 100, "#.#") + "%" +
+                 "\nS/R: " + (near_support ? "Support ✓" : "None") +
+                 "\nFib: " + (near_fib_618 ? "61.8% ✓" : near_fib_382 ? "38.2% ✓" : near_fib_500 ? "50% ✓" : "None") +
+                 "\nFib TP: " + (use_fib_tp_optimization ? "127.2%" : "ATR-based")
+    
+    label_color = confluence_long >= 0.7 ? color.new(color.lime, 10) : 
+                 confluence_long >= 0.5 ? color.new(color.lime, 30) : 
+                 color.new(color.lime, 50)
+    
+    label.new(bar_index, low - (atr * 2), label_text,
+              color=label_color, textcolor=color.white,
+              style=label.style_label_up, size=size.normal)
+
+if show_entry_signals and short_signal
+    label_text = "🔻 SHORT ENTRY\n" +
+                 "Price: $" + str.tostring(close, "#.####") +
+                 "\nSL: $" + str.tostring(close + adjusted_sl_distance_short, "#.####") +
+                 "\nTP: $" + str.tostring(short_take_profit, "#.####") +
+                 "\nConfluence: " + str.tostring(confluence_short * 100, "#.#") + "%" +
+                 "\nS/R: " + (near_resistance ? "Resistance ✓" : "None") +
+                 "\nFib: " + (near_fib_618 ? "61.8% ✓" : near_fib_382 ? "38.2% ✓" : near_fib_500 ? "50% ✓" : "None") +
+                 "\nFib TP: " + (use_fib_tp_optimization ? "127.2%" : "ATR-based")
+    
+    label_color = confluence_short >= 0.7 ? color.new(color.red, 10) : 
+                 confluence_short >= 0.5 ? color.new(color.red, 30) : 
+                 color.new(color.red, 50)
+    
+    label.new(bar_index, high + (atr * 2), label_text,
+              color=label_color, textcolor=color.white,
+              style=label.style_label_down, size=size.normal)
+
+// === POSITION LABELS (ENHANCED) ===
+if show_position_labels and strategy.position_size > 0
+    pnl_color = strategy.openprofit >= 0 ? color.lime : color.red
+    label_text = "📈 LONG POSITION\n" +
+                 "Entry: $" + str.tostring(strategy.position_avg_price, "#.####") +
+                 "\nSize: " + str.tostring(strategy.position_size, "#.####") +
+                 "\nP&L: $" + str.tostring(strategy.openprofit, "#.##") +
+                 "\nSL: $" + str.tostring(strategy.position_avg_price - adjusted_sl_distance_long, "#.####") +
+                 "\nTP: $" + str.tostring(long_take_profit, "#.####")
+    
+    label.new(bar_index, high, label_text, color=color.new(pnl_color, 20), 
+             textcolor=color.white, style=label.style_label_down, size=size.small)
+
+if show_position_labels and strategy.position_size < 0
+    pnl_color = strategy.openprofit >= 0 ? color.lime : color.red
+    label_text = "📉 SHORT POSITION\n" +
+                 "Entry: $" + str.tostring(strategy.position_avg_price, "#.####") +
+                 "\nSize: " + str.tostring(math.abs(strategy.position_size), "#.####") +
+                 "\nP&L: $" + str.tostring(strategy.openprofit, "#.##") +
+                 "\nSL: $" + str.tostring(strategy.position_avg_price + adjusted_sl_distance_short, "#.####") +
+                 "\nTP: $" + str.tostring(short_take_profit, "#.####")
+    
+    label.new(bar_index, low, label_text, color=color.new(pnl_color, 20), 
+             textcolor=color.white, style=label.style_label_up, size=size.small)
+
+// ===============================================================================
+// ENHANCED PERFORMANCE DASHBOARD
+// ===============================================================================
+
+if show_performance_table and barstate.islast
+    var table enhanced_dashboard = table.new(position.top_right, 3, 30, bgcolor=color.new(color.white, 90), border_width=1)
+    
+    // Header
+    table.cell(enhanced_dashboard, 0, 0, "📊 SR-FIB SIGNALS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    table.cell(enhanced_dashboard, 1, 0, "STATUS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    table.cell(enhanced_dashboard, 2, 0, "STRENGTH", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    
+    // EMA Alignment
+    table.cell(enhanced_dashboard, 0, 1, "EMA Trend", text_color=color.black, text_size=size.small)
+    ema_status = ema_alignment_bullish ? "🟢 BULL" : ema_alignment_bearish ? "🔴 BEAR" : "🟡 NEUTRAL"
+    ema_color = ema_alignment_bullish ? color.green : ema_alignment_bearish ? color.red : color.orange
+    table.cell(enhanced_dashboard, 1, 1, ema_status, text_color=ema_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 1, str.tostring(ema_comp_long * 100, "#") + "%", text_color=ema_color, text_size=size.small)
+    
+    // HTF Trend
+    table.cell(enhanced_dashboard, 0, 2, "HTF (" + higher_tf + ")", text_color=color.black, text_size=size.small)
+    htf_status = htf_bullish_trend ? "🟢 BULL" : htf_bearish_trend ? "🔴 BEAR" : "🟡 NEUTRAL"
+    htf_color = htf_bullish_trend ? color.green : htf_bearish_trend ? color.red : color.orange
+    table.cell(enhanced_dashboard, 1, 2, htf_status, text_color=htf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 2, str.tostring(htf_comp_long * 100, "#") + "%", text_color=htf_color, text_size=size.small)
+    
+    // Support/Resistance
+    table.cell(enhanced_dashboard, 0, 3, "S/R Levels", text_color=color.black, text_size=size.small)
+    sr_status = near_support ? "🟢 SUP" : near_resistance ? "🔴 RES" : "🟡 NONE"
+    sr_color = near_support ? color.green : near_resistance ? color.red : color.orange
+    sr_strength_val = near_support ? support_strength : near_resistance ? resistance_strength : 0
+    table.cell(enhanced_dashboard, 1, 3, sr_status, text_color=sr_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 3, str.tostring(sr_strength_val, "#") + "%", text_color=sr_color, text_size=size.small)
+    
+    // Fibonacci Levels
+    table.cell(enhanced_dashboard, 0, 4, "Fibonacci", text_color=color.black, text_size=size.small)
+    fib_status = near_fib_618 ? "🟡 61.8%" : near_fib_382 ? "🟡 38.2%" : near_fib_500 ? "🟡 50%" : "⚪ NONE"
+    fib_color = (near_fib_618 or near_fib_382 or near_fib_500) ? color.yellow : color.gray
+    fib_strength = fib_sr_confluence_support or fib_sr_confluence_resistance ? 100 : 
+                  (near_fib_618 or near_fib_382 or near_fib_500) ? 60 : 0
+    table.cell(enhanced_dashboard, 1, 4, fib_status, text_color=fib_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 4, str.tostring(fib_strength, "#") + "%", text_color=fib_color, text_size=size.small)
+    
+    // Confluence Score
+    table.cell(enhanced_dashboard, 0, 5, "Long Confluence", text_color=color.black, text_size=size.small)
+    long_conf_status = confluence_long >= 0.7 ? "🟢 HIGH" : confluence_long >= 0.5 ? "🟡 MED" : "🔴 LOW"
+    long_conf_color = confluence_long >= 0.7 ? color.green : confluence_long >= 0.5 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 5, long_conf_status, text_color=long_conf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 5, str.tostring(confluence_long * 100, "#") + "%", text_color=long_conf_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 6, "Short Confluence", text_color=color.black, text_size=size.small)
+    short_conf_status = confluence_short >= 0.7 ? "🟢 HIGH" : confluence_short >= 0.5 ? "🟡 MED" : "🔴 LOW"
+    short_conf_color = confluence_short >= 0.7 ? color.green : confluence_short >= 0.5 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 6, short_conf_status, text_color=short_conf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 6, str.tostring(confluence_short * 100, "#") + "%", text_color=short_conf_color, text_size=size.small)
+    
+    // Entry Readiness
+    table.cell(enhanced_dashboard, 0, 7, "LONG Ready", text_color=color.black, text_size=size.small)
+    long_ready = long_entry_conditions ? "🚀 READY" : "⏳ WAIT"
+    long_ready_color = long_entry_conditions ? color.green : color.gray
+    table.cell(enhanced_dashboard, 1, 7, long_ready, text_color=long_ready_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 7, long_entry_conditions ? "100%" : "0%", text_color=long_ready_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 8, "SHORT Ready", text_color=color.black, text_size=size.small)
+    short_ready = short_entry_conditions ? "🔻 READY" : "⏳ WAIT"
+    short_ready_color = short_entry_conditions ? color.red : color.gray
+    table.cell(enhanced_dashboard, 1, 8, short_ready, text_color=short_ready_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 8, short_entry_conditions ? "100%" : "0%", text_color=short_ready_color, text_size=size.small)
+    
+    // Risk Management
+    table.cell(enhanced_dashboard, 0, 9, "Daily Risk", text_color=color.black, text_size=size.small)
+    risk_available = max_risk_per_day - daily_risk_percent
+    risk_status = risk_available > 3.0 ? "✅ " + str.tostring(risk_available, "#.#") + "%" : 
+                 risk_available > 1.0 ? "⚠️ " + str.tostring(risk_available, "#.#") + "%" : "🚫 LIMIT"
+    risk_color = risk_available > 3.0 ? color.green : risk_available > 1.0 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 9, risk_status, text_color=risk_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 9, str.tostring((max_risk_per_day - risk_available) / max_risk_per_day * 100, "#") + "%", text_color=risk_color, text_size=size.small)
+    
+    // Market Info
+    table.cell(enhanced_dashboard, 0, 10, "Volatility", text_color=color.black, text_size=size.small)
+    vol_status = volatility_ok ? "✅ GOOD" : "❌ " + (atr_normalized < dynamic_atr_threshold ? "LOW" : "HIGH")
+    vol_color = volatility_ok ? color.green : color.red
+    table.cell(enhanced_dashboard, 1, 10, vol_status, text_color=vol_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 10, str.tostring(atr_normalized, "#.#") + "%", text_color=vol_color, text_size=size.small)
+    
+    // Current Price & Levels
+    table.cell(enhanced_dashboard, 0, 11, "Price", text_color=color.black, text_size=size.small)
+    table.cell(enhanced_dashboard, 1, 11, "$" + str.tostring(close, "#.####"), text_color=color.blue, text_size=size.small)
+    price_change_pct = (close - close[1]) / close[1] * 100
+    change_color = price_change_pct > 0 ? color.green : color.red
+    table.cell(enhanced_dashboard, 2, 11, str.tostring(price_change_pct, "#.##") + "%", text_color=change_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 12, "Support", text_color=color.black, text_size=size.small)
+    sup_text = not na(cached_support) ? "$" + str.tostring(cached_support, "#.##") : "N/A"
+    sup_dist = not na(cached_support) ? str.tostring(math.abs(close - cached_support) / close * 100, "#.##") + "%" : "N/A"
+    table.cell(enhanced_dashboard, 1, 12, sup_text, text_color=color.green, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 12, sup_dist, text_color=color.green, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 13, "Resistance", text_color=color.black, text_size=size.small)
+    res_text = not na(cached_resistance) ? "$" + str.tostring(cached_resistance, "#.##") : "N/A"
+    res_dist = not na(cached_resistance) ? str.tostring(math.abs(close - cached_resistance) / close * 100, "#.##") + "%" : "N/A"
+    table.cell(enhanced_dashboard, 1, 13, res_text, text_color=color.red, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 13, res_dist, text_color=color.red, text_size=size.small)
+    
+    // Strategy Performance Summary
+    table.cell(enhanced_dashboard, 0, 14, "Total P&L", text_color=color.black, text_size=size.small)
+    total_pnl = strategy.netprofit
+    pnl_color = total_pnl >= 0 ? color.green : color.red
+    pnl_text = "$" + str.tostring(total_pnl, "#.##")
+    win_rate = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0
+    table.cell(enhanced_dashboard, 1, 14, pnl_text, text_color=pnl_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 14, str.tostring(win_rate, "#") + "%", text_color=pnl_color, text_size=size.small)
+
+    // === DEBUG INFO (if enabled) ===
+    if enable_debug_mode
+        // Add new rows for debugging
+        table.cell(enhanced_dashboard, 0, 15, "🔍 DEBUG INFO", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        table.cell(enhanced_dashboard, 1, 15, "STATUS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        table.cell(enhanced_dashboard, 2, 15, "VALUE", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        
+        table.cell(enhanced_dashboard, 0, 16, "Safe Hours", text_color=color.black, text_size=size.small)
+        hours_status = safe_trading_hours ? "✅ YES" : "❌ NO (GMT:" + str.tostring(current_hour) + ")"
+        hours_color = safe_trading_hours ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 16, hours_status, text_color=hours_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 16, "GMT:" + str.tostring(current_hour), text_color=hours_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 17, "Basic Long", text_color=color.black, text_size=size.small)
+        basic_long_status = basic_long_conditions ? "✅ YES" : "❌ NO"
+        basic_long_color = basic_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 17, basic_long_status, text_color=basic_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 17, basic_long_conditions ? "100%" : "0%", text_color=basic_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 18, "SR Fib Long", text_color=color.black, text_size=size.small)
+        sr_fib_long_status = sr_fib_long_conditions ? "✅ YES" : "❌ NO"
+        sr_fib_long_color = sr_fib_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 18, sr_fib_long_status, text_color=sr_fib_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 18, sr_fib_long_conditions ? "100%" : "0%", text_color=sr_fib_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 19, "Risk Long", text_color=color.black, text_size=size.small)
+        risk_long_status = risk_long_conditions ? "✅ YES" : "❌ NO"
+        risk_long_color = risk_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 19, risk_long_status, text_color=risk_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 19, risk_long_conditions ? "100%" : "0%", text_color=risk_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 20, "Aggressive Mode", text_color=color.black, text_size=size.small)
+        aggressive_status = enable_aggressive_mode ? "🚀 ON" : "⭐ OFF"
+        aggressive_color = enable_aggressive_mode ? color.orange : color.gray
+        table.cell(enhanced_dashboard, 1, 20, aggressive_status, text_color=aggressive_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 20, "Threshold:" + str.tostring(confluence_threshold * 100, "#") + "%", text_color=aggressive_color, text_size=size.small)
+        
+        // Add simple mode debug info (use pre-calculated signals)
+        if enable_aggressive_mode
+            table.cell(enhanced_dashboard, 0, 21, "Simple Long", text_color=color.black, text_size=size.small)
+            simple_long_status = simple_long_signal ? "🚀 READY" : "⏳ WAIT"
+            simple_long_color = simple_long_signal ? color.lime : color.gray
+            table.cell(enhanced_dashboard, 1, 21, simple_long_status, text_color=simple_long_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 21, simple_long_signal ? "100%" : "0%", text_color=simple_long_color, text_size=size.small)
+            
+            table.cell(enhanced_dashboard, 0, 22, "Simple Short", text_color=color.black, text_size=size.small)
+            simple_short_status = simple_short_signal ? "🔻 READY" : "⏳ WAIT"
+            simple_short_color = simple_short_signal ? color.red : color.gray
+            table.cell(enhanced_dashboard, 1, 22, simple_short_status, text_color=simple_short_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 22, simple_short_signal ? "100%" : "0%", text_color=simple_short_color, text_size=size.small)
+        
+        // Add emergency test mode info
+        if emergency_test_mode
+            basic_long_test = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+            basic_short_test = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+            
+            table.cell(enhanced_dashboard, 0, 23, "Emergency Long", text_color=color.black, text_size=size.small)
+            emergency_long_status = basic_long_test ? "🚨 READY" : "⏳ WAIT"
+            emergency_long_color = basic_long_test ? color.orange : color.gray
+            table.cell(enhanced_dashboard, 1, 23, emergency_long_status, text_color=emergency_long_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 23, basic_long_test ? "100%" : "0%", text_color=emergency_long_color, text_size=size.small)
+            
+            table.cell(enhanced_dashboard, 0, 24, "Emergency Short", text_color=color.black, text_size=size.small)
+            emergency_short_status = basic_short_test ? "🚨 READY" : "⏳ WAIT"
+            emergency_short_color = basic_short_test ? color.orange : color.gray
+            table.cell(enhanced_dashboard, 1, 24, emergency_short_status, text_color=emergency_short_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 24, basic_short_test ? "100%" : "0%", text_color=emergency_short_color, text_size=size.small)
+
+// ===============================================================================
+// COMPREHENSIVE ENHANCED ALERT SYSTEM
+// ===============================================================================
+
+json_base(module, event) => '{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"' + module + '","event":"' + event + '"'
+json_kv(key, value) => ',"' + key + '":' + value
+json_close() => '}'
+
+// === EXIT ALERTS (enhanced with Fibonacci info) ===
+if enable_exit_alerts and strategy.closedtrades > strategy.closedtrades[1]
+    exit_price = close
+    profit_loss = strategy.netprofit - strategy.netprofit[1]
+    entry_price_prev = strategy.position_avg_price[1]
+    pnl_pct = entry_price_prev != 0 ? (exit_price - entry_price_prev) / entry_price_prev * (strategy.position_size[1] > 0 ? 100 : -100) : 0
+    exit_reason = use_fib_tp_optimization ? "fibonacci_tp" : "atr_tp"
+    srv = json_base("SR_FIB", strategy.position_size[1] > 0 ? "LONG_EXIT" : "SHORT_EXIT") +
+          json_kv("price", str.tostring(exit_price, "#.####")) +
+          json_kv("pnl_usd", str.tostring(profit_loss, "#.##")) +
+          json_kv("pnl_pct", str.tostring(pnl_pct, "#.###")) +
+          json_kv("entry", str.tostring(entry_price_prev, "#.####")) +
+          json_kv("exit_reason", '"' + exit_reason + '"') +
+          json_kv("time", str.tostring(timenow)) +
+          json_close()
+    alert(srv, alert.freq_once_per_bar)
+
+// === FIBONACCI LEVEL ALERTS ===
+if enable_fib_alerts and enable_fibonacci
+    if near_fib_618 and not near_fib_618[1]
+        payload = json_base("SR_FIB", "FIB_618_TOUCH") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("fib_level", str.tostring(fib_level_618, "#.####")) +
+                  json_kv("fib_direction", fib_direction_up ? '"up"' : '"down"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if near_fib_382 and not near_fib_382[1]
+        payload = json_base("SR_FIB", "FIB_382_TOUCH") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("fib_level", str.tostring(fib_level_382, "#.####")) +
+                  json_kv("fib_direction", fib_direction_up ? '"up"' : '"down"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === S/R BREAK ALERTS (enhanced) ===
+if enable_sr_break_alerts
+    if support_broken and support_break_bars == sr_break_confirmation_bars
+        payload = json_base("SR_FIB", "SUPPORT_BREAK") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("support_level", str.tostring(cached_support, "#.####")) +
+                  json_kv("support_strength", str.tostring(support_strength, "#.##")) +
+                  json_kv("confirmation_bars", str.tostring(sr_break_confirmation_bars)) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if resistance_broken and resistance_break_bars == sr_break_confirmation_bars
+        payload = json_base("SR_FIB", "RESISTANCE_BREAK") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("resistance_level", str.tostring(cached_resistance, "#.####")) +
+                  json_kv("resistance_strength", str.tostring(resistance_strength, "#.##")) +
+                  json_kv("confirmation_bars", str.tostring(sr_break_confirmation_bars)) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === CONFLUENCE ALERTS ===
+if enable_market_alerts
+    if fib_sr_confluence_support and not fib_sr_confluence_support[1]
+        payload = json_base("SR_FIB", "FIB_SR_CONFLUENCE_LONG") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("support", str.tostring(cached_support, "#.####")) +
+                  json_kv("confluence_score", str.tostring(confluence_long, "#.###")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if fib_sr_confluence_resistance and not fib_sr_confluence_resistance[1]
+        payload = json_base("SR_FIB", "FIB_SR_CONFLUENCE_SHORT") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("resistance", str.tostring(cached_resistance, "#.####")) +
+                  json_kv("confluence_score", str.tostring(confluence_short, "#.###")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === OTHER ALERTS (keeping original logic) ===
+if enable_exit_alerts and use_trailing_stop
+    if strategy.position_size > 0 and close <= trailing_stop_long
+        payload = json_base("SR_FIB", "TRAIL_HIT_LONG") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("trail", str.tostring(trailing_stop_long, "#.####")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    if strategy.position_size < 0 and close >= trailing_stop_short
+        payload = json_base("SR_FIB", "TRAIL_HIT_SHORT") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("trail", str.tostring(trailing_stop_short, "#.####")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+if enable_risk_alerts and daily_risk_percent > max_risk_per_day * 0.8
+    payload = json_base("SR_FIB", "DAILY_RISK_WARNING") +
+              json_kv("risk_used_pct", str.tostring(daily_risk_percent, "#.###")) +
+              json_kv("risk_limit_pct", str.tostring(max_risk_per_day, "#.###")) +
+              json_kv("time", str.tostring(timenow)) +
+              json_close()
+    alert(payload, alert.freq_once_per_bar)
+
+// === DEBUG ALERTS (for troubleshooting) ===
+if enable_debug_mode and barstate.isconfirmed
+    // Alert every hour with confluence info
+    if bar_index % 12 == 0  // Every 12 bars (hourly on 5m chart)
+        payload = json_base("SR_FIB", "DEBUG_STATUS") +
+                  json_kv("confluence_long", str.tostring(confluence_long, "#.###")) +
+                  json_kv("confluence_short", str.tostring(confluence_short, "#.###")) +
+                  json_kv("basic_long", basic_long_conditions ? '"true"' : '"false"') +
+                  json_kv("sr_fib_long", sr_fib_long_conditions ? '"true"' : '"false"') +
+                  json_kv("risk_long", risk_long_conditions ? '"true"' : '"false"') +
+                  json_kv("safe_hours", safe_trading_hours ? '"true"' : '"false"') +
+                  json_kv("volatility_ok", volatility_ok ? '"true"' : '"false"') +
+                  json_kv("gmt_hour", str.tostring(current_hour)) +
+                  json_kv("atr_normalized", str.tostring(atr_normalized, "#.##")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+    // Alert when confluence > 0.3 but no signal
+    if confluence_long >= 0.3 and not long_signal
+        payload = json_base("SR_FIB", "HIGH_CONFLUENCE_NO_SIGNAL") +
+                  json_kv("confluence_long", str.tostring(confluence_long, "#.###")) +
+                  json_kv("missing_condition", not basic_long_conditions ? '"basic"' : not sr_fib_long_conditions ? '"sr_fib"' : not risk_long_conditions ? '"risk"' : '"threshold"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// ===============================================================================
+// DATA WINDOW PLOTS (for monitoring)
+// ===============================================================================
+
+plot(confluence_long, title="Confluence Long", color=color.new(color.green, 0), display=display.data_window)
+plot(confluence_short, title="Confluence Short", color=color.new(color.red, 0), display=display.data_window)
+plot(expected_profit_long, title="Exp Profit Long", color=color.new(color.green, 70), display=display.data_window)
+plot(expected_profit_short, title="Exp Profit Short", color=color.new(color.red, 70), display=display.data_window)
+plot(support_strength, title="Support Strength", color=color.new(color.green, 50), display=display.data_window)
+plot(resistance_strength, title="Resistance Strength", color=color.new(color.red, 50), display=display.data_window)
+plot(near_fib_618 ? 1 : 0, title="Near Fib 61.8%", color=color.new(color.yellow, 0), display=display.data_window)
+
+// ===============================================================================
+// STRATEGY NOTES V7 ENHANCEMENTS
+// ===============================================================================
+//
+// V7 MAJOR IMPROVEMENTS:
+// 1. FIBONACCI INTEGRATION:
+//    - Auto-detection of significant swing highs/lows
+//    - Dynamic Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
+//    - Fibonacci extension targets (127.2%, 161.8%, 261.8%)
+//    - Fibonacci-optimized take profit levels
+//    - Fibonacci + S/R confluence detection
+//
+// 2. ENHANCED S/R SYSTEM:
+//    - Volume-weighted strength calculation
+//    - Dynamic line width based on strength
+//    - Gradient zone visualization with transparency
+//    - Age-based S/R decay system
+//    - Break/hold confirmation system
+//    - Strength scoring algorithm
+//
+// 3. VISUAL ENHANCEMENTS:
+//    - Multiple visualization modes (Compact, Standard, Enhanced, Gradient)
+//    - Dynamic transparency based on strength and age
+//    - Enhanced labeling with strength metrics
+//    - Fibonacci level highlighting
+//    - Confluence markers
+//
+// 4. IMPROVED CONFLUENCE:
+//    - 6-factor confluence scoring (EMA, HTF, Momentum, S/R, Fibonacci, Volatility)
+//    - Fibonacci-S/R confluence detection
+//    - Dynamic signal sizing based on confluence strength
+//    - Enhanced entry condition filtering
+//
+// 5. ADVANCED ALERTS:
+//    - Fibonacci level touch alerts
+//    - S/R break confirmation alerts
+//    - Confluence confluence alerts
+//    - Enhanced JSON payloads with Fibonacci data
+//    - Module identification (SR_FIB)
+//
+// ===============================================================================
+// 🚀 ULTIMATE SIMPLE MODE DEBUG DASHBOARD
+// ===============================================================================
+
+if enable_simple_mode and barstate.islast
+    var table simple_debug = table.new(position.top_left, 2, 8, bgcolor=color.new(color.white, 90), border_width=1)
+    
+    table.cell(simple_debug, 0, 0, "🚀 SIMPLE MODE " + simple_mode_version, 
+               text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 20))
+    table.cell(simple_debug, 1, 0, "STATUS", 
+               text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 20))
+    
+    table.cell(simple_debug, 0, 1, "Mode Active")
+    table.cell(simple_debug, 1, 1, "✅ ON", text_color=color.green, text_size=size.small)
+    
+    table.cell(simple_debug, 0, 2, "EMA8")
+    table.cell(simple_debug, 1, 2, str.tostring(ema_fast_line, "#.##"), text_color=color.blue, text_size=size.small)
+    
+    table.cell(simple_debug, 0, 3, "EMA21") 
+    table.cell(simple_debug, 1, 3, str.tostring(ema_slow_line, "#.##"), text_color=color.red, text_size=size.small)
+    
+    if simple_mode_version == "V3 - Triple EMA"
+        table.cell(simple_debug, 0, 4, "EMA50")
+        table.cell(simple_debug, 1, 4, str.tostring(simple_ema50, "#.##"), text_color=color.gray, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 5, "RSI")
+        table.cell(simple_debug, 1, 5, str.tostring(rsi_current, "#.#"), text_color=color.orange, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 6, "V3 Long Signal")
+        v3_long_active = simple_v3_long_signal
+        table.cell(simple_debug, 1, 6, v3_long_active ? "🟢 GO" : "❌ NO", 
+                  text_color=v3_long_active ? color.green : color.red, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 7, "V3 Short Signal")
+        v3_short_active = simple_v3_short_signal  
+        table.cell(simple_debug, 1, 7, v3_short_active ? "🔴 GO" : "❌ NO",
+                  text_color=v3_short_active ? color.red : color.gray, text_size=size.small)
+    else
+        table.cell(simple_debug, 0, 4, "V1 Long Signal")
+        v1_long_active = simple_v1_long_signal
+        table.cell(simple_debug, 1, 4, v1_long_active ? "🟢 GO" : "❌ NO",
+                  text_color=v1_long_active ? color.green : color.red, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 5, "V1 Short Signal") 
+        v1_short_active = simple_v1_short_signal
+        table.cell(simple_debug, 1, 5, v1_short_active ? "🔴 GO" : "❌ NO",
+                  text_color=v1_short_active ? color.red : color.gray, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 6, "Total Trades")
+        table.cell(simple_debug, 1, 6, str.tostring(strategy.closedtrades), text_color=color.blue, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 7, "Win Rate")
+        win_rate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
+        table.cell(simple_debug, 1, 7, str.tostring(win_rate, "#.#") + "%",
+                  text_color=win_rate > 40 ? color.green : win_rate > 30 ? color.orange : color.red, text_size=size.small)
+
+// USAGE RECOMMENDATIONS:
+// - Enable Fibonacci for swing trading and higher probability entries
+// - Use Enhanced or Gradient Zones visual mode for clearer S/R
+// - Monitor confluence scores - aim for 60%+ for high-probability trades
+// - Enable volume-weighted S/R for better level reliability
+// - Use Fibonacci extensions for optimized take profit targets
+// - Set appropriate lookback periods based on timeframe (20-50 for scalping)
+//
+// FIBONACCI BEST PRACTICES:
+// - 61.8% and 38.2% are strongest retracement levels
+// - 127.2% extension is excellent for first take profit
+// - Confluence with S/R levels significantly increases success rate
+// - Monitor for rejection or acceptance at key Fibonacci levels
+//
+// =============================================================================== with gradient zones
+// - Integrated Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
+// - Fibonacci extension targets for take profit optimization
+// - Volume-weighted S/R strength calculation
+// - Dynamic S/R thickness based on strength and age
+// - Enhanced color coding with transparency gradients
+// - Fibonacci confluence detection with S/R levels
+// - Auto Fibonacci drawing on major swing points
+// - Advanced S/R break/hold detection with alerts
+//
+// ===============================================================================
+
+// Duplicate //@version and strategy() declaration block removed (single header now defined at top)
+
+// ===============================================================================
+// ENHANCED INPUT PARAMETERS
+// ===============================================================================
+
+// === MULTI-TIMEFRAME SETTINGS ===
+// Pengaturan multi-timeframe sudah didefinisikan sebelumnya di baris 50-52
+
+// === ENHANCED FIBONACCI SETTINGS ===
+// Pengaturan Fibonacci sudah didefinisikan sebelumnya di baris 57-64
+
+// (Note) Inputs are defined near the top of the file to avoid duplication
+
+// === RISK MANAGEMENT VARIABLES (already defined above) ===
+// All input variables are already defined in the input section above
+
+// ===============================================================================
+// INDICATOR CALCULATIONS (keeping original)
+// ===============================================================================
+
+// Indicator calculations already defined above - removing duplicate definitions
+// Simple mode helper EMA already defined above (duplicate removed)
+
+// Multi-timeframe analysis already defined above - removing duplicate definitions
+
+// Fibonacci constants already defined above - removing duplicate definitions
+
+// Swing detection functions already defined above - removing duplicate definitions
+
+// Fibonacci level storage and calculations already defined above - removing duplicate definitions
+
+// Fibonacci proximity variables already defined above - removing duplicate definitions
+
+// Volume-weighted strength calculation already defined above - removing duplicate definitions
+
+// ===============================================================================
+// ENHANCED SUPPORT/RESISTANCE DETECTION
+// ===============================================================================
+
+// === ENHANCED S/R TYPE WITH VOLUME AND AGE (DEFINED EARLIER) ===
+
+// === ENHANCED S/R ARRAYS ===
+// Duplicate typed arrays removed. Using sup_* and res_* parallel arrays defined above.
+
+// Duplicate calculate_strength_score removed; using the version defined earlier in the file
+
+// === ENHANCED PIVOT DETECTION ===
+pivot_high_enhanced = ta.pivothigh(high, int(lookback_period/2), int(lookback_period/2))
+pivot_low_enhanced = ta.pivotlow(low, int(lookback_period/2), int(lookback_period/2))
+
+// === ADD ENHANCED S/R LEVELS ===
+// Duplicate add_enhanced_level removed; using the version defined above with parallel arrays.
+
+if not na(pivot_high_enhanced)
+    add_enhanced_level(true, pivot_high_enhanced)
+if not na(pivot_low_enhanced)
+    add_enhanced_level(false, pivot_low_enhanced)
+
+// === ENHANCED NEAREST S/R FUNCTIONS ===
+// Duplicate get_nearest_enhanced_support removed; using the version defined above with parallel arrays.
+
+// Duplicate get_nearest_enhanced_resistance removed; using the version defined above with parallel arrays.
+
+// === ENHANCED PROXIMITY CONDITIONS ===
+near_support = not na(cached_support) and math.abs(close - cached_support) <= (close * sr_tolerance / 100)
+near_resistance = not na(cached_resistance) and math.abs(close - cached_resistance) <= (close * sr_tolerance / 100)
+
+// === S/R BREAK/HOLD DETECTION ===
+var bool support_broken = false
+var bool resistance_broken = false
+var int support_break_bars = 0
+var int resistance_break_bars = 0
+
+// Support break detection
+if near_support and close < cached_support
+    if not support_broken
+        support_broken := true
+        support_break_bars := 0
+    else
+        support_break_bars += 1
+else if support_broken and support_break_bars >= sr_break_confirmation_bars
+    support_broken := false
+    support_break_bars := 0
+
+// Resistance break detection  
+if near_resistance and close > cached_resistance
+    if not resistance_broken
+        resistance_broken := true
+        resistance_break_bars := 0
+    else
+        resistance_break_bars += 1
+else if resistance_broken and resistance_break_bars >= sr_break_confirmation_bars
+    resistance_broken := false
+    resistance_break_bars := 0
+
+// === HTF S/R LEVELS ===
+htf_support = request.security(syminfo.tickerid, higher_tf, cached_support)
+htf_resistance = request.security(syminfo.tickerid, higher_tf, cached_resistance)
+near_htf_support = not na(htf_support) and math.abs(close - htf_support) <= (close * sr_tolerance / 100)
+near_htf_resistance = not na(htf_resistance) and math.abs(close - htf_resistance) <= (close * sr_tolerance / 100)
+
+pullback_to_support = not na(cached_support) and close > cached_support and close[1] <= cached_support and near_support
+pullback_to_resistance = not na(cached_resistance) and close < cached_resistance and close[1] >= cached_resistance and near_resistance
+
+// === FIBONACCI + S/R CONFLUENCE ===
+fib_sr_confluence_support = near_support and (near_fib_236 or near_fib_382 or near_fib_500 or near_fib_618 or near_fib_786)
+fib_sr_confluence_resistance = near_resistance and (near_fib_236 or near_fib_382 or near_fib_500 or near_fib_618 or near_fib_786)
+
+// ===============================================================================
+// RISK MANAGEMENT & POSITION SIZING (keeping original logic)
+// ===============================================================================
+
+var float daily_risk_used = 0.0
+var float daily_risk_percent = 0.0
+var int last_reset_dom = dayofmonth(time)
+var int last_reset_year = year(time)
+if dayofmonth(time) != last_reset_dom or year(time) != last_reset_year
+    daily_risk_used := 0.0
+    last_reset_dom := dayofmonth(time)
+    last_reset_year := year(time)
+
+daily_risk_percent := daily_risk_used
+
+// IMPROVED: Market Hours Filter (RELAXED FOR CRYPTO SCALPING)
+// Only block major volatility spikes, crypto trades 24/7
+current_hour = hour(time)
+safe_trading_hours = not (current_hour >= 21 and current_hour <= 22)  // Only block 1 hour around US close
+
+long_trend_ok = enable_mtf_filter ? htf_bullish_trend : true
+short_trend_ok = enable_mtf_filter ? htf_bearish_trend : true
+
+// Enhanced entry conditions with Fibonacci confluence + Market Hours Filter
+// Break down long conditions into smaller parts to avoid line length issues
+basic_long_conditions = ema_alignment_bullish and long_trend_ok and (rsi_bullish or macd_bullish) and volatility_ok and safe_trading_hours
+sr_fib_long_conditions = (near_support or near_htf_support or pullback_to_support or fib_sr_confluence_support)
+risk_long_conditions = (ltf_bullish_cross or ema_fast_line > ema_slow_line) and daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+basic_short_conditions = ema_alignment_bearish and short_trend_ok and (rsi_bearish or macd_bearish) and volatility_ok and safe_trading_hours
+sr_fib_short_conditions = (near_resistance or near_htf_resistance or pullback_to_resistance or fib_sr_confluence_resistance)
+risk_short_conditions = (ltf_bearish_cross or ema_fast_line < ema_slow_line) and daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+// AGGRESSIVE MODE: Simplified conditions for testing
+if enable_aggressive_mode
+    basic_long_conditions := ema_fast_line > ema_slow_line and safe_trading_hours and volatility_ok
+    sr_fib_long_conditions := true  // Always true in aggressive mode
+    risk_long_conditions := daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+    
+    basic_short_conditions := ema_fast_line < ema_slow_line and safe_trading_hours and volatility_ok
+    sr_fib_short_conditions := true  // Always true in aggressive mode  
+    risk_short_conditions := daily_risk_percent < max_risk_per_day and strategy.position_size == 0
+
+long_entry_conditions = basic_long_conditions and sr_fib_long_conditions and risk_long_conditions
+short_entry_conditions = basic_short_conditions and sr_fib_short_conditions and risk_short_conditions
+
+// Enhanced confluence scoring with Fibonacci
+ema_comp_long = ema_alignment_bullish ? 1.0 : 0.0
+ema_comp_short = ema_alignment_bearish ? 1.0 : 0.0
+htf_comp_long = htf_bullish_trend ? 1.0 : htf_bearish_trend ? 0.0 : 0.5
+htf_comp_short = htf_bearish_trend ? 1.0 : htf_bullish_trend ? 0.0 : 0.5
+mom_comp_long = (macd_bullish and rsi_bullish) ? 1.0 : (macd_bullish or rsi_bullish) ? 0.6 : 0.0
+mom_comp_short = (macd_bearish and rsi_bearish) ? 1.0 : (macd_bearish or rsi_bearish) ? 0.6 : 0.0
+sr_comp_long = (near_support and near_htf_support) ? 1.0 : (near_support or near_htf_support) ? 0.6 : 0.0
+sr_comp_short = (near_resistance and near_htf_resistance) ? 1.0 : (near_resistance or near_htf_resistance) ? 0.6 : 0.0
+fib_comp_long = fib_sr_confluence_support ? 0.8 : (near_fib_382 or near_fib_618) ? 0.4 : 0.0
+fib_comp_short = fib_sr_confluence_resistance ? 0.8 : (near_fib_382 or near_fib_618) ? 0.4 : 0.0
+vol_comp = volatility_ok ? 1.0 : 0.0
+
+confluence_long = (ema_comp_long + htf_comp_long + mom_comp_long + sr_comp_long + fib_comp_long + vol_comp) / 6.0
+confluence_short = (ema_comp_short + htf_comp_short + mom_comp_short + sr_comp_short + fib_comp_short + vol_comp) / 6.0
+
+// IMPROVED: RELAXED threshold for more scalping opportunities
+confluence_threshold = enable_aggressive_mode ? 0.25 : 0.50  // Ultra low in aggressive mode
+long_signal = long_entry_conditions and confluence_long >= confluence_threshold
+short_signal = short_entry_conditions and confluence_short >= confluence_threshold
+
+// === SIMPLE MODE CONDITIONS (DECLARE EARLY FOR STRATEGY USE) ===
+simple_long_signal = enable_aggressive_mode and ta.crossover(ema_fast_line, ema_slow_line) and strategy.position_size == 0
+simple_short_signal = enable_aggressive_mode and ta.crossunder(ema_fast_line, ema_slow_line) and strategy.position_size == 0
+
+// Position sizing calculations (keeping original enhanced logic)
+volatility_multiplier = atr_normalized <= 1.0 ? 1.2 : atr_normalized <= 2.0 ? 1.0 : 0.8
+base_position_size = (strategy.equity * risk_per_trade / 100) * volatility_multiplier
+stop_loss_atr_multiplier = atr_normalized <= 1.5 ? 1.5 : atr_normalized <= 2.5 ? 2.0 : 2.5
+adjusted_sl_distance_long = atr * stop_loss_atr_multiplier
+adjusted_sl_distance_short = atr * stop_loss_atr_multiplier
+
+// Enhanced take profit with Fibonacci targets
+calculate_fib_take_profit_long() =>
+    // SIMPLIFIED: Always use ATR-based TP for reliability
+    close + (adjusted_sl_distance_long * risk_reward_ratio)
+
+calculate_fib_take_profit_short() =>
+    // SIMPLIFIED: Always use ATR-based TP for reliability  
+    close - (adjusted_sl_distance_short * risk_reward_ratio)
+
+long_take_profit = calculate_fib_take_profit_long()
+short_take_profit = calculate_fib_take_profit_short()
+
+long_position_size = base_position_size / adjusted_sl_distance_long
+short_position_size = base_position_size / adjusted_sl_distance_short
+
+profit_per_unit_long = long_take_profit - close
+profit_per_unit_short = close - short_take_profit
+small_profit_long = profit_per_unit_long <= close * (min_profit_tick_ratio / 100.0)
+small_profit_short = profit_per_unit_short <= close * (min_profit_tick_ratio / 100.0)
+qty_target_long = profit_per_unit_long > 0 ? target_profit_usd / profit_per_unit_long : long_position_size
+qty_target_short = profit_per_unit_short > 0 ? target_profit_usd / profit_per_unit_short : short_position_size
+hybrid_long_qty = enable_hybrid_qty ? math.min(long_position_size, qty_target_long) : long_position_size
+hybrid_short_qty = enable_hybrid_qty ? math.min(short_position_size, qty_target_short) : short_position_size
+hybrid_long_qty := hybrid_long_qty <= 0 ? long_position_size : hybrid_long_qty
+hybrid_short_qty := hybrid_short_qty <= 0 ? short_position_size : hybrid_short_qty
+
+round_qty(q) =>
+    step = qty_step
+    step > 0 ? math.floor(q / step) * step : q
+
+normalize_qty(q) =>
+    mn = min_notional_usd / close
+    q_adj = math.max(q, mn)
+    round_qty(q_adj)
+
+hybrid_long_qty := normalize_qty(hybrid_long_qty)
+hybrid_short_qty := normalize_qty(hybrid_short_qty)
+
+expected_profit_long = profit_per_unit_long * hybrid_long_qty
+expected_profit_short = profit_per_unit_short * hybrid_short_qty
+
+if show_sizing_debug and barstate.islast and strategy.position_size == 0
+    expected_long_nominal_profit = profit_per_unit_long * hybrid_long_qty
+    expected_short_nominal_profit = profit_per_unit_short * hybrid_short_qty
+    dbg = "SZ DBG"
+    dbg := dbg + "\nLqty:" + str.tostring(hybrid_long_qty, "#.####")
+    dbg := dbg + "\nSqty:" + str.tostring(hybrid_short_qty, "#.####")
+    dbg := dbg + "\nLprof:" + str.tostring(expected_long_nominal_profit, "#.##")
+    dbg := dbg + "\nSprof:" + str.tostring(expected_short_nominal_profit, "#.##")
+    label.new(bar_index, high, dbg, style=label.style_label_down, color=color.new(color.blue, 75), textcolor=color.white, size=size.tiny)
+
+var float trailing_stop_long = na
+var float trailing_stop_short = na
+
+if strategy.position_size > 0 and use_trailing_stop
+    trail_distance = close * trailing_stop_pct / 100
+    trailing_stop_long := math.max(nz(trailing_stop_long), close - trail_distance)
+
+if strategy.position_size < 0 and use_trailing_stop
+    trail_distance = close * trailing_stop_pct / 100
+    trailing_stop_short := math.min(nz(trailing_stop_short), close + trail_distance)
+
+if strategy.position_size == 0
+    trailing_stop_long := na
+    trailing_stop_short := na
+
+// ===============================================================================
+// ULTRA SIMPLIFIED STRATEGY EXECUTION (EMERGENCY FIX)
+// ===============================================================================
+
+// EMERGENCY: Ultra simple approach to guarantee trades
+if enable_aggressive_mode
+    // Use pre-calculated simple signals
+    if simple_long_signal
+        strategy.entry("Simple_Long", strategy.long, qty=0.01)  // Fixed tiny quantity
+        strategy.exit("Simple_Long_Exit", "Simple_Long", 
+                     stop=close * 0.98, 
+                     limit=close * 1.04)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SIMPLE","event":"LONG_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+    
+    if simple_short_signal
+        strategy.entry("Simple_Short", strategy.short, qty=0.01)  // Fixed tiny quantity
+        strategy.exit("Simple_Short_Exit", "Simple_Short", 
+                     stop=close * 1.02, 
+                     limit=close * 0.96)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SIMPLE","event":"SHORT_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+else
+    // SIMPLIFIED NORMAL MODE  
+    if long_signal
+        strategy.entry("Long", strategy.long, qty=0.01)  // Fixed quantity
+        strategy.exit("Long Exit", "Long", stop=close * 0.98, limit=close * 1.04)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SR_FIB","event":"LONG_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+    if short_signal
+        strategy.entry("Short", strategy.short, qty=0.01)  // Fixed quantity
+        strategy.exit("Short Exit", "Short", stop=close * 1.02, limit=close * 0.96)
+        if enable_entry_alerts
+            alert('{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"SR_FIB","event":"SHORT_SIGNAL","price":' + str.tostring(close, "#.####") + ',"time":' + str.tostring(timenow) + '}', alert.freq_once_per_bar)
+
+// EMERGENCY TEST: Simple trend following (always active)
+emergency_test_mode = input.bool(false, "EMERGENCY TEST: Basic Trend Following", group="Alert Settings")
+if emergency_test_mode
+    basic_long = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+    basic_short = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+    
+    if basic_long
+        strategy.entry("Emergency_Long", strategy.long, qty=0.01)
+        strategy.exit("Emergency_Long_Exit", "Emergency_Long", stop=close*0.99, limit=close*1.02)
+    
+    if basic_short
+        strategy.entry("Emergency_Short", strategy.short, qty=0.01)
+        strategy.exit("Emergency_Short_Exit", "Emergency_Short", stop=close*1.01, limit=close*0.98)
+
+// ===============================================================================
+// 🚀 ULTIMATE SIMPLE MODE (PROVEN TRADING LOGIC)
+// ===============================================================================
+
+if enable_simple_mode
+    // === SIMPLE MODE V1 - BASIC EMA (150 trades proven) ===
+    if simple_mode_version == "V1 - Basic"
+        simple_v1_long = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+        simple_v1_short = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+        
+        if simple_v1_long
+            strategy.entry("Simple_V1_Long", strategy.long, qty=0.01)
+            strategy.exit("Simple_V1_Long_Exit", "Simple_V1_Long", stop=close*0.99, limit=close*1.02)
+        
+        if simple_v1_short
+            strategy.entry("Simple_V1_Short", strategy.short, qty=0.01)
+            strategy.exit("Simple_V1_Short_Exit", "Simple_V1_Short", stop=close*1.01, limit=close*0.98)
+    
+    // === SIMPLE MODE V3 - TRIPLE EMA + RSI (Quality filtered) ===
+    if simple_mode_version == "V3 - Triple EMA"
+        // Triple EMA confluence 
+        simple_v3_strong_up = close > ema_fast_line and ema_fast_line > ema_slow_line and ema_slow_line > simple_ema50
+        simple_v3_strong_down = close < ema_fast_line and ema_fast_line < ema_slow_line and ema_slow_line < simple_ema50
+        
+        // Smart RSI ranges
+        simple_v3_good_momentum_long = rsi_current > 40 and rsi_current < 80
+        simple_v3_good_momentum_short = rsi_current < 60 and rsi_current > 20
+        
+        // Final conditions
+        simple_v3_long = simple_v3_strong_up and simple_v3_good_momentum_long and strategy.position_size == 0
+        simple_v3_short = simple_v3_strong_down and simple_v3_good_momentum_short and strategy.position_size == 0
+        
+        if simple_v3_long
+            strategy.entry("Simple_V3_Long", strategy.long, qty=0.01)
+            strategy.exit("Simple_V3_Long_Exit", "Simple_V3_Long", stop=close*0.98, limit=close*1.04)  // 2% SL, 4% TP
+        
+        if simple_v3_short
+            strategy.entry("Simple_V3_Short", strategy.short, qty=0.01)
+            strategy.exit("Simple_V3_Short_Exit", "Simple_V3_Short", stop=close*1.02, limit=close*0.96)  // 2% SL, 4% TP
+
+if strategy.position_size > 0 and use_trailing_stop and not na(trailing_stop_long)
+    strategy.exit("Long Trailing", "Long", stop=trailing_stop_long)
+
+if strategy.position_size < 0 and use_trailing_stop and not na(trailing_stop_short)
+    strategy.exit("Short Trailing", "Short", stop=trailing_stop_short)
+
+// ===============================================================================
+// ENHANCED VISUALIZATION
+// ===============================================================================
+
+// === EMA PLOTS (unchanged) ===
+plot(show_emas ? ema_fast_line : na, "Fast EMA", color=color.blue, linewidth=1)
+plot(show_emas ? ema_slow_line : na, "Slow EMA", color=color.orange, linewidth=1)
+plot(show_emas ? ema_trend_line : na, "Trend EMA", color=color.red, linewidth=1)
+
+// === ATR BANDS ===
+plot(show_atr ? close + atr : na, "ATR Upper", color=color.new(color.gray, 70), linewidth=1, style=plot.style_cross)
+plot(show_atr ? close - atr : na, "ATR Lower", color=color.new(color.gray, 70), linewidth=1, style=plot.style_cross)
+
+// === MTF TREND BACKGROUND ===
+bgcolor(show_mtf_trend ? (htf_bullish_trend ? color.new(color.green, 92) : htf_bearish_trend ? color.new(color.red, 92) : na) : na)
+
+// ===============================================================================
+// FIBONACCI VISUALIZATION
+// ===============================================================================
+
+var line fib_line_0 = na
+var line fib_line_236 = na
+var line fib_line_382 = na
+var line fib_line_500 = na
+var line fib_line_618 = na
+var line fib_line_786 = na
+var line fib_line_100 = na
+var line fib_line_ext_1272 = na
+var line fib_line_ext_1618 = na
+
+// === FIBONACCI RETRACEMENT LINES ===
+if enable_fibonacci and show_fib_levels and not na(fib_range)
+    // Update existing lines or create new ones
+    fib_start_bar = math.min(nz(fib_high_bar), nz(fib_low_bar))
+    fib_end_bar = bar_index + fib_extend_right
+    
+    // 0% level
+    if na(fib_line_0)
+        fib_line_0 := line.new(fib_start_bar, fib_level_0, fib_end_bar, fib_level_0, color=color.new(color.gray, 30), width=fib_line_width, style=line.style_dashed)
+    else
+        line.set_xy1(fib_line_0, fib_start_bar, fib_level_0)
+        line.set_xy2(fib_line_0, fib_end_bar, fib_level_0)
+    
+    // 23.6% level
+    if na(fib_line_236)
+        fib_line_236 := line.new(fib_start_bar, fib_level_236, fib_end_bar, fib_level_236, color=color.new(color.red, 40), width=fib_line_width, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_236, fib_start_bar, fib_level_236)
+        line.set_xy2(fib_line_236, fib_end_bar, fib_level_236)
+    
+    // 38.2% level
+    if na(fib_line_382)
+        fib_line_382 := line.new(fib_start_bar, fib_level_382, fib_end_bar, fib_level_382, color=color.new(color.orange, 30), width=fib_line_width + 1, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_382, fib_start_bar, fib_level_382)
+        line.set_xy2(fib_line_382, fib_end_bar, fib_level_382)
+    
+    // 50% level
+    if na(fib_line_500)
+        fib_line_500 := line.new(fib_start_bar, fib_level_500, fib_end_bar, fib_level_500, color=color.new(color.blue, 20), width=fib_line_width + 1, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_500, fib_start_bar, fib_level_500)
+        line.set_xy2(fib_line_500, fib_end_bar, fib_level_500)
+    
+    // 61.8% level (Golden Ratio)
+    if na(fib_line_618)
+        fib_line_618 := line.new(fib_start_bar, fib_level_618, fib_end_bar, fib_level_618, color=color.new(color.yellow, 10), width=fib_line_width + 2, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_618, fib_start_bar, fib_level_618)
+        line.set_xy2(fib_line_618, fib_end_bar, fib_level_618)
+    
+    // 78.6% level
+    if na(fib_line_786)
+        fib_line_786 := line.new(fib_start_bar, fib_level_786, fib_end_bar, fib_level_786, color=color.new(color.purple, 40), width=fib_line_width, style=line.style_solid)
+    else
+        line.set_xy1(fib_line_786, fib_start_bar, fib_level_786)
+        line.set_xy2(fib_line_786, fib_end_bar, fib_level_786)
+    
+    // 100% level
+    if na(fib_line_100)
+        fib_line_100 := line.new(fib_start_bar, fib_level_100, fib_end_bar, fib_level_100, color=color.new(color.gray, 30), width=fib_line_width, style=line.style_dashed)
+    else
+        line.set_xy1(fib_line_100, fib_start_bar, fib_level_100)
+        line.set_xy2(fib_line_100, fib_end_bar, fib_level_100)
+
+// === FIBONACCI EXTENSIONS ===
+if enable_fibonacci and show_fib_extensions and not na(fib_range)
+    fib_start_bar = math.min(nz(fib_high_bar), nz(fib_low_bar))
+    fib_end_bar = bar_index + fib_extend_right
+    
+    // 127.2% extension
+    if na(fib_line_ext_1272)
+        fib_line_ext_1272 := line.new(fib_start_bar, fib_ext_1272, fib_end_bar, fib_ext_1272, color=color.new(color.lime, 20), width=fib_line_width + 1, style=line.style_dotted)
+    else
+        line.set_xy1(fib_line_ext_1272, fib_start_bar, fib_ext_1272)
+        line.set_xy2(fib_line_ext_1272, fib_end_bar, fib_ext_1272)
+    
+    // 161.8% extension
+    if na(fib_line_ext_1618)
+        fib_line_ext_1618 := line.new(fib_start_bar, fib_ext_1618, fib_end_bar, fib_ext_1618, color=color.new(color.aqua, 20), width=fib_line_width + 1, style=line.style_dotted)
+    else
+        line.set_xy1(fib_line_ext_1618, fib_start_bar, fib_ext_1618)
+        line.set_xy2(fib_line_ext_1618, fib_end_bar, fib_ext_1618)
+
+// === FIBONACCI LABELS ===
+if enable_fibonacci and show_fib_levels and not na(fib_range) and barstate.islast
+    // Stagger label positions to prevent overlapping
+    label_offset_base = fib_extend_right/2
+    vertical_spacing = (math.abs(fib_level_100 - fib_level_0) * 0.02) // 2% of range for spacing
+    
+    label.new(bar_index + label_offset_base, fib_level_0, "0.0%", style=label.style_label_left, 
+              color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 2, fib_level_236, "23.6%", style=label.style_label_left, 
+              color=color.new(color.red, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 4, fib_level_382, "38.2%", style=label.style_label_left, 
+              color=color.new(color.orange, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 6, fib_level_500, "50.0%", style=label.style_label_left, 
+              color=color.new(color.blue, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 8, fib_level_618, "61.8%", style=label.style_label_left, 
+              color=color.new(color.yellow, 40), textcolor=color.black, size=size.tiny)
+    label.new(bar_index + label_offset_base + 10, fib_level_786, "78.6%", style=label.style_label_left, 
+              color=color.new(color.purple, 60), textcolor=color.white, size=size.tiny)
+    label.new(bar_index + label_offset_base + 12, fib_level_100, "100%", style=label.style_label_left, 
+              color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+    
+    if show_fib_extensions
+        label.new(bar_index + label_offset_base + 14, fib_ext_1272, "127.2%", style=label.style_label_left, 
+                  color=color.new(color.lime, 60), textcolor=color.black, size=size.tiny)
+        label.new(bar_index + label_offset_base + 16, fib_ext_1618, "161.8%", style=label.style_label_left, 
+                  color=color.new(color.aqua, 60), textcolor=color.black, size=size.tiny)
+
+// ===============================================================================
+// ENHANCED SUPPORT/RESISTANCE VISUALIZATION
+// ===============================================================================
+
+// === DYNAMIC LINE WIDTH CALCULATION ===
+get_dynamic_width(strength) =>
+    if dynamic_line_width
+        strength >= 80 ? 3 : strength >= 60 ? 2 : strength >= 40 ? 1 : 1
+    else
+        1
+
+// === GRADIENT ZONE VISUALIZATION ===
+create_gradient_zone(level_price, zone_width_pct, is_resistance, strength, age) =>
+    if enable_gradient_zones and show_sr_zones
+        zone_width = level_price * zone_width_pct / 100
+        zone_upper = level_price + zone_width/2
+        zone_lower = level_price - zone_width/2
+        
+        // Calculate transparency based on strength and age
+        base_transparency = zone_transparency_start
+        strength_bonus = math.round(strength / 10)  // 0-10 bonus
+        age_penalty = age > 20 ? math.round(age / 5) : 0
+        final_transparency = math.max(zone_transparency_start, math.min(zone_transparency_end, base_transparency - strength_bonus + age_penalty))
+        
+        base_color = is_resistance ? color.red : color.green
+        zone_color = color.new(base_color, final_transparency)
+        border_color = color.new(base_color, math.max(0, final_transparency - 20))
+        
+        // Create multiple gradient boxes for smooth effect
+        for i = 0 to 2
+            gradient_transparency = final_transparency + (i * 5)
+            gradient_zone_width = zone_width * (1 - i * 0.2)
+            gradient_upper = level_price + gradient_zone_width/2
+            gradient_lower = level_price - gradient_zone_width/2
+            
+            box.new(bar_index - lookback_period, gradient_lower, bar_index + 25, gradient_upper,
+                   border_color=color.new(base_color, gradient_transparency),
+                   bgcolor=color.new(base_color, gradient_transparency),
+                   border_width=1)
+
+// === ENHANCED S/R RENDERING ===
+if sr_visual_mode == "Enhanced" or sr_visual_mode == "Gradient Zones"
+    // Support levels (parallel arrays)
+    if array.size(sup_levels) > 0
+        for i = 0 to array.size(sup_levels) - 1
+            lvl_price = array.get(sup_levels, i)
+            lvl_strength = array.get(sup_strength, i)
+            lvl_touches = array.get(sup_touches, i)
+            lvl_vol = array.get(sup_volume_weight, i)
+            lvl_age = array.get(sup_age, i)
+            line_width = get_dynamic_width(lvl_strength)
+            line_transparency = sr_line_transparency
+            
+            // Adjust transparency based on strength
+            if lvl_strength >= 80
+                line_transparency := math.max(0, sr_line_transparency - 10)
+            else if lvl_strength <= 30
+                line_transparency := math.min(70, sr_line_transparency + 20)
+            
+            // Draw support line
+            line.new(bar_index - lookback_period * 2, lvl_price, bar_index + 30, lvl_price, color=color.new(color.green, line_transparency), width=line_width, style=line.style_solid)
+            
+            // Create gradient zone
+            if sr_visual_mode == "Gradient Zones"
+                create_gradient_zone(lvl_price, sr_zone_width, false, lvl_strength, lvl_age)
+            
+            // Enhanced labels
+            if show_sr_labels_enhanced
+                label_text = "S:" + str.tostring(lvl_price, "#.####") + 
+                           "\nT:" + str.tostring(lvl_touches) +
+                           "\nStr:" + str.tostring(lvl_strength, "#.#")
+                if enable_volume_weighted_sr
+                    label_text += "\nVol:" + str.tostring(lvl_vol * 100, "#.#") + "%"
+                
+                label_color = lvl_strength >= 70 ? color.new(color.green, 20) : 
+                             lvl_strength >= 40 ? color.new(color.green, 40) : 
+                             color.new(color.green, 60)
+                
+                // Stagger support labels horizontally to prevent overlap
+                label_x_offset = i * 3  // 3 bars spacing between labels
+                label.new(bar_index + label_x_offset, lvl_price, label_text, 
+                         color=label_color, style=label.style_label_left, 
+                         textcolor=color.white, size=size.tiny)
+    
+    // Resistance levels (parallel arrays)
+    if array.size(res_levels) > 0
+        for i = 0 to array.size(res_levels) - 1
+            lvl_price = array.get(res_levels, i)
+            lvl_strength = array.get(res_strength, i)
+            lvl_touches = array.get(res_touches, i)
+            lvl_vol = array.get(res_volume_weight, i)
+            lvl_age = array.get(res_age, i)
+            line_width = get_dynamic_width(lvl_strength)
+            line_transparency = sr_line_transparency
+            
+            if lvl_strength >= 80
+                line_transparency := math.max(0, sr_line_transparency - 10)
+            else if lvl_strength <= 30
+                line_transparency := math.min(70, sr_line_transparency + 20)
+            
+            // Draw resistance line
+            line.new(bar_index - lookback_period * 2, lvl_price, bar_index + 30, lvl_price, color=color.new(color.red, line_transparency), width=line_width, style=line.style_solid)
+            
+            if sr_visual_mode == "Gradient Zones"
+                create_gradient_zone(lvl_price, sr_zone_width, true, lvl_strength, lvl_age)
+            
+            if show_sr_labels_enhanced
+                label_text = "R:" + str.tostring(lvl_price, "#.####") + 
+                           "\nT:" + str.tostring(lvl_touches) +
+                           "\nStr:" + str.tostring(lvl_strength, "#.#")
+                if enable_volume_weighted_sr
+                    label_text += "\nVol:" + str.tostring(lvl_vol * 100, "#.#") + "%"
+                
+                label_color = lvl_strength >= 70 ? color.new(color.red, 20) : 
+                             lvl_strength >= 40 ? color.new(color.red, 40) : 
+                             color.new(color.red, 60)
+                
+                // Stagger resistance labels horizontally to prevent overlap
+                label_x_offset = i * 3  // 3 bars spacing between labels
+                label.new(bar_index + label_x_offset, lvl_price, label_text, 
+                         color=label_color, style=label.style_label_left, 
+                         textcolor=color.white, size=size.tiny)
+
+// === HTF S/R LEVELS (ENHANCED) ===
+if show_sr_levels and not na(htf_support)
+    line.new(bar_index - lookback_period * 3, htf_support, bar_index + 40, htf_support, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+    label.new(bar_index, htf_support, "HTF Support", color=color.new(color.green, 10), 
+             textcolor=color.white, style=label.style_label_left, size=size.small)
+
+if show_sr_levels and not na(htf_resistance)
+    line.new(bar_index - lookback_period * 3, htf_resistance, bar_index + 40, htf_resistance, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+    label.new(bar_index, htf_resistance, "HTF Resistance", color=color.new(color.red, 10), 
+             textcolor=color.white, style=label.style_label_left, size=size.small)
+
+// ===============================================================================
+// ENHANCED ENTRY SIGNAL VISUALIZATION
+// ===============================================================================
+
+// === CONFLUENCE-BASED SIGNAL TRANSPARENCY ===
+get_signal_color_transparency(confluence_score) =>
+    confluence_score >= 0.8 ? 0 : confluence_score >= 0.6 ? 20 : 40
+
+// === VISUAL SIGNALS ===
+plotshape(simple_long_signal, "🚀 SIMPLE LONG", shape.triangleup, location.belowbar, 
+          color=color.new(color.lime, 0), size=size.large)
+plotshape(simple_short_signal, "🔻 SIMPLE SHORT", shape.triangledown, location.abovebar, 
+          color=color.new(color.red, 0), size=size.large)
+
+// === EMERGENCY TEST MODE SIGNALS ===
+emergency_long_test = emergency_test_mode and close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+emergency_short_test = emergency_test_mode and close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+
+plotshape(emergency_long_test, "🚨 EMERGENCY LONG", shape.circle, location.belowbar, 
+          color=color.new(color.orange, 0), size=size.small)
+plotshape(emergency_short_test, "🚨 EMERGENCY SHORT", shape.circle, location.abovebar, 
+          color=color.new(color.orange, 0), size=size.small)
+
+// === 🚀 ULTIMATE SIMPLE MODE SIGNALS ===
+// V1 Basic signals
+simple_v1_long_signal = enable_simple_mode and simple_mode_version == "V1 - Basic" and close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+simple_v1_short_signal = enable_simple_mode and simple_mode_version == "V1 - Basic" and close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+
+// V3 Triple EMA signals
+simple_v3_long_signal = enable_simple_mode and simple_mode_version == "V3 - Triple EMA" and close > ema_fast_line and ema_fast_line > ema_slow_line and ema_slow_line > simple_ema50 and rsi_current > 40 and rsi_current < 80 and strategy.position_size == 0
+simple_v3_short_signal = enable_simple_mode and simple_mode_version == "V3 - Triple EMA" and close < ema_fast_line and ema_fast_line < ema_slow_line and ema_slow_line < simple_ema50 and rsi_current < 60 and rsi_current > 20 and strategy.position_size == 0
+
+plotshape(simple_v1_long_signal, "🚀 SIMPLE V1 LONG", shape.arrowup, location.belowbar, 
+          color=color.new(color.blue, 0), size=size.normal)
+plotshape(simple_v1_short_signal, "🚀 SIMPLE V1 SHORT", shape.arrowdown, location.abovebar, 
+          color=color.new(color.blue, 0), size=size.normal)
+
+plotshape(simple_v3_long_signal, "🎯 SIMPLE V3 LONG", shape.diamond, location.belowbar, 
+          color=color.new(color.purple, 0), size=size.large)
+plotshape(simple_v3_short_signal, "🎯 SIMPLE V3 SHORT", shape.diamond, location.abovebar, 
+          color=color.new(color.purple, 0), size=size.large)
+
+// === ENHANCED ENTRY ARROWS (NORMAL MODE) ===
+plotshape(show_entry_signals and long_signal and not enable_aggressive_mode, "Enhanced Long Entry",
+          shape.triangleup, location.belowbar,
+          color=color.new(color.lime, get_signal_color_transparency(confluence_long)), 
+          size=size.normal)
+
+plotshape(show_entry_signals and short_signal and not enable_aggressive_mode, "Enhanced Short Entry",
+          shape.triangledown, location.abovebar,
+          color=color.new(color.red, get_signal_color_transparency(confluence_short)), 
+          size=size.normal)
+
+// === FIBONACCI CONFLUENCE MARKERS ===
+plotshape(show_entry_signals and fib_sr_confluence_support, "Fib-SR Long Confluence",
+          shape.diamond, location.belowbar,
+          color=color.new(color.yellow, 30), size=size.tiny)
+
+plotshape(show_entry_signals and fib_sr_confluence_resistance, "Fib-SR Short Confluence",
+          shape.diamond, location.abovebar,
+          color=color.new(color.yellow, 30), size=size.tiny)
+
+// === DETAILED ENTRY LABELS WITH FIBONACCI INFO ===
+if show_entry_signals and long_signal
+    label_text = "🚀 LONG ENTRY\n" +
+                 "Price: $" + str.tostring(close, "#.####") +
+                 "\nSL: $" + str.tostring(close - adjusted_sl_distance_long, "#.####") +
+                 "\nTP: $" + str.tostring(long_take_profit, "#.####") +
+                 "\nConfluence: " + str.tostring(confluence_long * 100, "#.#") + "%" +
+                 "\nS/R: " + (near_support ? "Support ✓" : "None") +
+                 "\nFib: " + (near_fib_618 ? "61.8% ✓" : near_fib_382 ? "38.2% ✓" : near_fib_500 ? "50% ✓" : "None") +
+                 "\nFib TP: " + (use_fib_tp_optimization ? "127.2%" : "ATR-based")
+    
+    label_color = confluence_long >= 0.7 ? color.new(color.lime, 10) : 
+                 confluence_long >= 0.5 ? color.new(color.lime, 30) : 
+                 color.new(color.lime, 50)
+    
+    label.new(bar_index, low - (atr * 2), label_text,
+              color=label_color, textcolor=color.white,
+              style=label.style_label_up, size=size.normal)
+
+if show_entry_signals and short_signal
+    label_text = "🔻 SHORT ENTRY\n" +
+                 "Price: $" + str.tostring(close, "#.####") +
+                 "\nSL: $" + str.tostring(close + adjusted_sl_distance_short, "#.####") +
+                 "\nTP: $" + str.tostring(short_take_profit, "#.####") +
+                 "\nConfluence: " + str.tostring(confluence_short * 100, "#.#") + "%" +
+                 "\nS/R: " + (near_resistance ? "Resistance ✓" : "None") +
+                 "\nFib: " + (near_fib_618 ? "61.8% ✓" : near_fib_382 ? "38.2% ✓" : near_fib_500 ? "50% ✓" : "None") +
+                 "\nFib TP: " + (use_fib_tp_optimization ? "127.2%" : "ATR-based")
+    
+    label_color = confluence_short >= 0.7 ? color.new(color.red, 10) : 
+                 confluence_short >= 0.5 ? color.new(color.red, 30) : 
+                 color.new(color.red, 50)
+    
+    label.new(bar_index, high + (atr * 2), label_text,
+              color=label_color, textcolor=color.white,
+              style=label.style_label_down, size=size.normal)
+
+// === POSITION LABELS (ENHANCED) ===
+if show_position_labels and strategy.position_size > 0
+    pnl_color = strategy.openprofit >= 0 ? color.lime : color.red
+    label_text = "📈 LONG POSITION\n" +
+                 "Entry: $" + str.tostring(strategy.position_avg_price, "#.####") +
+                 "\nSize: " + str.tostring(strategy.position_size, "#.####") +
+                 "\nP&L: $" + str.tostring(strategy.openprofit, "#.##") +
+                 "\nSL: $" + str.tostring(strategy.position_avg_price - adjusted_sl_distance_long, "#.####") +
+                 "\nTP: $" + str.tostring(long_take_profit, "#.####")
+    
+    label.new(bar_index, high, label_text, color=color.new(pnl_color, 20), 
+             textcolor=color.white, style=label.style_label_down, size=size.small)
+
+if show_position_labels and strategy.position_size < 0
+    pnl_color = strategy.openprofit >= 0 ? color.lime : color.red
+    label_text = "📉 SHORT POSITION\n" +
+                 "Entry: $" + str.tostring(strategy.position_avg_price, "#.####") +
+                 "\nSize: " + str.tostring(math.abs(strategy.position_size), "#.####") +
+                 "\nP&L: $" + str.tostring(strategy.openprofit, "#.##") +
+                 "\nSL: $" + str.tostring(strategy.position_avg_price + adjusted_sl_distance_short, "#.####") +
+                 "\nTP: $" + str.tostring(short_take_profit, "#.####")
+    
+    label.new(bar_index, low, label_text, color=color.new(pnl_color, 20), 
+             textcolor=color.white, style=label.style_label_up, size=size.small)
+
+// ===============================================================================
+// ENHANCED PERFORMANCE DASHBOARD
+// ===============================================================================
+
+if show_performance_table and barstate.islast
+    var table enhanced_dashboard = table.new(position.top_right, 3, 30, bgcolor=color.new(color.white, 90), border_width=1)
+    
+    // Header
+    table.cell(enhanced_dashboard, 0, 0, "📊 SR-FIB SIGNALS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    table.cell(enhanced_dashboard, 1, 0, "STATUS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    table.cell(enhanced_dashboard, 2, 0, "STRENGTH", text_color=color.white, text_size=size.small, bgcolor=color.new(color.blue, 20))
+    
+    // EMA Alignment
+    table.cell(enhanced_dashboard, 0, 1, "EMA Trend", text_color=color.black, text_size=size.small)
+    ema_status = ema_alignment_bullish ? "🟢 BULL" : ema_alignment_bearish ? "🔴 BEAR" : "🟡 NEUTRAL"
+    ema_color = ema_alignment_bullish ? color.green : ema_alignment_bearish ? color.red : color.orange
+    table.cell(enhanced_dashboard, 1, 1, ema_status, text_color=ema_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 1, str.tostring(ema_comp_long * 100, "#") + "%", text_color=ema_color, text_size=size.small)
+    
+    // HTF Trend
+    table.cell(enhanced_dashboard, 0, 2, "HTF (" + higher_tf + ")", text_color=color.black, text_size=size.small)
+    htf_status = htf_bullish_trend ? "🟢 BULL" : htf_bearish_trend ? "🔴 BEAR" : "🟡 NEUTRAL"
+    htf_color = htf_bullish_trend ? color.green : htf_bearish_trend ? color.red : color.orange
+    table.cell(enhanced_dashboard, 1, 2, htf_status, text_color=htf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 2, str.tostring(htf_comp_long * 100, "#") + "%", text_color=htf_color, text_size=size.small)
+    
+    // Support/Resistance
+    table.cell(enhanced_dashboard, 0, 3, "S/R Levels", text_color=color.black, text_size=size.small)
+    sr_status = near_support ? "🟢 SUP" : near_resistance ? "🔴 RES" : "🟡 NONE"
+    sr_color = near_support ? color.green : near_resistance ? color.red : color.orange
+    sr_strength_val = near_support ? support_strength : near_resistance ? resistance_strength : 0
+    table.cell(enhanced_dashboard, 1, 3, sr_status, text_color=sr_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 3, str.tostring(sr_strength_val, "#") + "%", text_color=sr_color, text_size=size.small)
+    
+    // Fibonacci Levels
+    table.cell(enhanced_dashboard, 0, 4, "Fibonacci", text_color=color.black, text_size=size.small)
+    fib_status = near_fib_618 ? "🟡 61.8%" : near_fib_382 ? "🟡 38.2%" : near_fib_500 ? "🟡 50%" : "⚪ NONE"
+    fib_color = (near_fib_618 or near_fib_382 or near_fib_500) ? color.yellow : color.gray
+    fib_strength = fib_sr_confluence_support or fib_sr_confluence_resistance ? 100 : 
+                  (near_fib_618 or near_fib_382 or near_fib_500) ? 60 : 0
+    table.cell(enhanced_dashboard, 1, 4, fib_status, text_color=fib_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 4, str.tostring(fib_strength, "#") + "%", text_color=fib_color, text_size=size.small)
+    
+    // Confluence Score
+    table.cell(enhanced_dashboard, 0, 5, "Long Confluence", text_color=color.black, text_size=size.small)
+    long_conf_status = confluence_long >= 0.7 ? "🟢 HIGH" : confluence_long >= 0.5 ? "🟡 MED" : "🔴 LOW"
+    long_conf_color = confluence_long >= 0.7 ? color.green : confluence_long >= 0.5 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 5, long_conf_status, text_color=long_conf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 5, str.tostring(confluence_long * 100, "#") + "%", text_color=long_conf_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 6, "Short Confluence", text_color=color.black, text_size=size.small)
+    short_conf_status = confluence_short >= 0.7 ? "🟢 HIGH" : confluence_short >= 0.5 ? "🟡 MED" : "🔴 LOW"
+    short_conf_color = confluence_short >= 0.7 ? color.green : confluence_short >= 0.5 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 6, short_conf_status, text_color=short_conf_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 6, str.tostring(confluence_short * 100, "#") + "%", text_color=short_conf_color, text_size=size.small)
+    
+    // Entry Readiness
+    table.cell(enhanced_dashboard, 0, 7, "LONG Ready", text_color=color.black, text_size=size.small)
+    long_ready = long_entry_conditions ? "🚀 READY" : "⏳ WAIT"
+    long_ready_color = long_entry_conditions ? color.green : color.gray
+    table.cell(enhanced_dashboard, 1, 7, long_ready, text_color=long_ready_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 7, long_entry_conditions ? "100%" : "0%", text_color=long_ready_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 8, "SHORT Ready", text_color=color.black, text_size=size.small)
+    short_ready = short_entry_conditions ? "🔻 READY" : "⏳ WAIT"
+    short_ready_color = short_entry_conditions ? color.red : color.gray
+    table.cell(enhanced_dashboard, 1, 8, short_ready, text_color=short_ready_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 8, short_entry_conditions ? "100%" : "0%", text_color=short_ready_color, text_size=size.small)
+    
+    // Risk Management
+    table.cell(enhanced_dashboard, 0, 9, "Daily Risk", text_color=color.black, text_size=size.small)
+    risk_available = max_risk_per_day - daily_risk_percent
+    risk_status = risk_available > 3.0 ? "✅ " + str.tostring(risk_available, "#.#") + "%" : 
+                 risk_available > 1.0 ? "⚠️ " + str.tostring(risk_available, "#.#") + "%" : "🚫 LIMIT"
+    risk_color = risk_available > 3.0 ? color.green : risk_available > 1.0 ? color.orange : color.red
+    table.cell(enhanced_dashboard, 1, 9, risk_status, text_color=risk_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 9, str.tostring((max_risk_per_day - risk_available) / max_risk_per_day * 100, "#") + "%", text_color=risk_color, text_size=size.small)
+    
+    // Market Info
+    table.cell(enhanced_dashboard, 0, 10, "Volatility", text_color=color.black, text_size=size.small)
+    vol_status = volatility_ok ? "✅ GOOD" : "❌ " + (atr_normalized < dynamic_atr_threshold ? "LOW" : "HIGH")
+    vol_color = volatility_ok ? color.green : color.red
+    table.cell(enhanced_dashboard, 1, 10, vol_status, text_color=vol_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 10, str.tostring(atr_normalized, "#.#") + "%", text_color=vol_color, text_size=size.small)
+    
+    // Current Price & Levels
+    table.cell(enhanced_dashboard, 0, 11, "Price", text_color=color.black, text_size=size.small)
+    table.cell(enhanced_dashboard, 1, 11, "$" + str.tostring(close, "#.####"), text_color=color.blue, text_size=size.small)
+    price_change_pct = (close - close[1]) / close[1] * 100
+    change_color = price_change_pct > 0 ? color.green : color.red
+    table.cell(enhanced_dashboard, 2, 11, str.tostring(price_change_pct, "#.##") + "%", text_color=change_color, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 12, "Support", text_color=color.black, text_size=size.small)
+    sup_text = not na(cached_support) ? "$" + str.tostring(cached_support, "#.##") : "N/A"
+    sup_dist = not na(cached_support) ? str.tostring(math.abs(close - cached_support) / close * 100, "#.##") + "%" : "N/A"
+    table.cell(enhanced_dashboard, 1, 12, sup_text, text_color=color.green, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 12, sup_dist, text_color=color.green, text_size=size.small)
+    
+    table.cell(enhanced_dashboard, 0, 13, "Resistance", text_color=color.black, text_size=size.small)
+    res_text = not na(cached_resistance) ? "$" + str.tostring(cached_resistance, "#.##") : "N/A"
+    res_dist = not na(cached_resistance) ? str.tostring(math.abs(close - cached_resistance) / close * 100, "#.##") + "%" : "N/A"
+    table.cell(enhanced_dashboard, 1, 13, res_text, text_color=color.red, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 13, res_dist, text_color=color.red, text_size=size.small)
+    
+    // Strategy Performance Summary
+    table.cell(enhanced_dashboard, 0, 14, "Total P&L", text_color=color.black, text_size=size.small)
+    total_pnl = strategy.netprofit
+    pnl_color = total_pnl >= 0 ? color.green : color.red
+    pnl_text = "$" + str.tostring(total_pnl, "#.##")
+    win_rate = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0
+    table.cell(enhanced_dashboard, 1, 14, pnl_text, text_color=pnl_color, text_size=size.small)
+    table.cell(enhanced_dashboard, 2, 14, str.tostring(win_rate, "#") + "%", text_color=pnl_color, text_size=size.small)
+
+    // === DEBUG INFO (if enabled) ===
+    if enable_debug_mode
+        // Add new rows for debugging
+        table.cell(enhanced_dashboard, 0, 15, "🔍 DEBUG INFO", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        table.cell(enhanced_dashboard, 1, 15, "STATUS", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        table.cell(enhanced_dashboard, 2, 15, "VALUE", text_color=color.white, text_size=size.small, bgcolor=color.new(color.orange, 20))
+        
+        table.cell(enhanced_dashboard, 0, 16, "Safe Hours", text_color=color.black, text_size=size.small)
+        hours_status = safe_trading_hours ? "✅ YES" : "❌ NO (GMT:" + str.tostring(current_hour) + ")"
+        hours_color = safe_trading_hours ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 16, hours_status, text_color=hours_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 16, "GMT:" + str.tostring(current_hour), text_color=hours_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 17, "Basic Long", text_color=color.black, text_size=size.small)
+        basic_long_status = basic_long_conditions ? "✅ YES" : "❌ NO"
+        basic_long_color = basic_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 17, basic_long_status, text_color=basic_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 17, basic_long_conditions ? "100%" : "0%", text_color=basic_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 18, "SR Fib Long", text_color=color.black, text_size=size.small)
+        sr_fib_long_status = sr_fib_long_conditions ? "✅ YES" : "❌ NO"
+        sr_fib_long_color = sr_fib_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 18, sr_fib_long_status, text_color=sr_fib_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 18, sr_fib_long_conditions ? "100%" : "0%", text_color=sr_fib_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 19, "Risk Long", text_color=color.black, text_size=size.small)
+        risk_long_status = risk_long_conditions ? "✅ YES" : "❌ NO"
+        risk_long_color = risk_long_conditions ? color.green : color.red
+        table.cell(enhanced_dashboard, 1, 19, risk_long_status, text_color=risk_long_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 19, risk_long_conditions ? "100%" : "0%", text_color=risk_long_color, text_size=size.small)
+        
+        table.cell(enhanced_dashboard, 0, 20, "Aggressive Mode", text_color=color.black, text_size=size.small)
+        aggressive_status = enable_aggressive_mode ? "🚀 ON" : "⭐ OFF"
+        aggressive_color = enable_aggressive_mode ? color.orange : color.gray
+        table.cell(enhanced_dashboard, 1, 20, aggressive_status, text_color=aggressive_color, text_size=size.small)
+        table.cell(enhanced_dashboard, 2, 20, "Threshold:" + str.tostring(confluence_threshold * 100, "#") + "%", text_color=aggressive_color, text_size=size.small)
+        
+        // Add simple mode debug info (use pre-calculated signals)
+        if enable_aggressive_mode
+            table.cell(enhanced_dashboard, 0, 21, "Simple Long", text_color=color.black, text_size=size.small)
+            simple_long_status = simple_long_signal ? "🚀 READY" : "⏳ WAIT"
+            simple_long_color = simple_long_signal ? color.lime : color.gray
+            table.cell(enhanced_dashboard, 1, 21, simple_long_status, text_color=simple_long_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 21, simple_long_signal ? "100%" : "0%", text_color=simple_long_color, text_size=size.small)
+            
+            table.cell(enhanced_dashboard, 0, 22, "Simple Short", text_color=color.black, text_size=size.small)
+            simple_short_status = simple_short_signal ? "🔻 READY" : "⏳ WAIT"
+            simple_short_color = simple_short_signal ? color.red : color.gray
+            table.cell(enhanced_dashboard, 1, 22, simple_short_status, text_color=simple_short_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 22, simple_short_signal ? "100%" : "0%", text_color=simple_short_color, text_size=size.small)
+        
+        // Add emergency test mode info
+        if emergency_test_mode
+            basic_long_test = close > ema_fast_line and ema_fast_line > ema_slow_line and strategy.position_size == 0
+            basic_short_test = close < ema_fast_line and ema_fast_line < ema_slow_line and strategy.position_size == 0
+            
+            table.cell(enhanced_dashboard, 0, 23, "Emergency Long", text_color=color.black, text_size=size.small)
+            emergency_long_status = basic_long_test ? "🚨 READY" : "⏳ WAIT"
+            emergency_long_color = basic_long_test ? color.orange : color.gray
+            table.cell(enhanced_dashboard, 1, 23, emergency_long_status, text_color=emergency_long_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 23, basic_long_test ? "100%" : "0%", text_color=emergency_long_color, text_size=size.small)
+            
+            table.cell(enhanced_dashboard, 0, 24, "Emergency Short", text_color=color.black, text_size=size.small)
+            emergency_short_status = basic_short_test ? "🚨 READY" : "⏳ WAIT"
+            emergency_short_color = basic_short_test ? color.orange : color.gray
+            table.cell(enhanced_dashboard, 1, 24, emergency_short_status, text_color=emergency_short_color, text_size=size.small)
+            table.cell(enhanced_dashboard, 2, 24, basic_short_test ? "100%" : "0%", text_color=emergency_short_color, text_size=size.small)
+
+// ===============================================================================
+// COMPREHENSIVE ENHANCED ALERT SYSTEM
+// ===============================================================================
+
+json_base(module, event) => '{"secret":"' + webhook_secret + '","symbol":"' + syminfo.ticker + '","module":"' + module + '","event":"' + event + '"'
+json_kv(key, value) => ',"' + key + '":' + value
+json_close() => '}'
+
+// === EXIT ALERTS (enhanced with Fibonacci info) ===
+if enable_exit_alerts and strategy.closedtrades > strategy.closedtrades[1]
+    exit_price = close
+    profit_loss = strategy.netprofit - strategy.netprofit[1]
+    entry_price_prev = strategy.position_avg_price[1]
+    pnl_pct = entry_price_prev != 0 ? (exit_price - entry_price_prev) / entry_price_prev * (strategy.position_size[1] > 0 ? 100 : -100) : 0
+    exit_reason = use_fib_tp_optimization ? "fibonacci_tp" : "atr_tp"
+    srv = json_base("SR_FIB", strategy.position_size[1] > 0 ? "LONG_EXIT" : "SHORT_EXIT") +
+          json_kv("price", str.tostring(exit_price, "#.####")) +
+          json_kv("pnl_usd", str.tostring(profit_loss, "#.##")) +
+          json_kv("pnl_pct", str.tostring(pnl_pct, "#.###")) +
+          json_kv("entry", str.tostring(entry_price_prev, "#.####")) +
+          json_kv("exit_reason", '"' + exit_reason + '"') +
+          json_kv("time", str.tostring(timenow)) +
+          json_close()
+    alert(srv, alert.freq_once_per_bar)
+
+// === FIBONACCI LEVEL ALERTS ===
+if enable_fib_alerts and enable_fibonacci
+    if near_fib_618 and not near_fib_618[1]
+        payload = json_base("SR_FIB", "FIB_618_TOUCH") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("fib_level", str.tostring(fib_level_618, "#.####")) +
+                  json_kv("fib_direction", fib_direction_up ? '"up"' : '"down"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if near_fib_382 and not near_fib_382[1]
+        payload = json_base("SR_FIB", "FIB_382_TOUCH") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("fib_level", str.tostring(fib_level_382, "#.####")) +
+                  json_kv("fib_direction", fib_direction_up ? '"up"' : '"down"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === S/R BREAK ALERTS (enhanced) ===
+if enable_sr_break_alerts
+    if support_broken and support_break_bars == sr_break_confirmation_bars
+        payload = json_base("SR_FIB", "SUPPORT_BREAK") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("support_level", str.tostring(cached_support, "#.####")) +
+                  json_kv("support_strength", str.tostring(support_strength, "#.##")) +
+                  json_kv("confirmation_bars", str.tostring(sr_break_confirmation_bars)) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if resistance_broken and resistance_break_bars == sr_break_confirmation_bars
+        payload = json_base("SR_FIB", "RESISTANCE_BREAK") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("resistance_level", str.tostring(cached_resistance, "#.####")) +
+                  json_kv("resistance_strength", str.tostring(resistance_strength, "#.##")) +
+                  json_kv("confirmation_bars", str.tostring(sr_break_confirmation_bars)) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === CONFLUENCE ALERTS ===
+if enable_market_alerts
+    if fib_sr_confluence_support and not fib_sr_confluence_support[1]
+        payload = json_base("SR_FIB", "FIB_SR_CONFLUENCE_LONG") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("support", str.tostring(cached_support, "#.####")) +
+                  json_kv("confluence_score", str.tostring(confluence_long, "#.###")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    
+    if fib_sr_confluence_resistance and not fib_sr_confluence_resistance[1]
+        payload = json_base("SR_FIB", "FIB_SR_CONFLUENCE_SHORT") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("resistance", str.tostring(cached_resistance, "#.####")) +
+                  json_kv("confluence_score", str.tostring(confluence_short, "#.###")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// === OTHER ALERTS (keeping original logic) ===
+if enable_exit_alerts and use_trailing_stop
+    if strategy.position_size > 0 and close <= trailing_stop_long
+        payload = json_base("SR_FIB", "TRAIL_HIT_LONG") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("trail", str.tostring(trailing_stop_long, "#.####")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+    if strategy.position_size < 0 and close >= trailing_stop_short
+        payload = json_base("SR_FIB", "TRAIL_HIT_SHORT") +
+                  json_kv("price", str.tostring(close, "#.####")) +
+                  json_kv("trail", str.tostring(trailing_stop_short, "#.####")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+if enable_risk_alerts and daily_risk_percent > max_risk_per_day * 0.8
+    payload = json_base("SR_FIB", "DAILY_RISK_WARNING") +
+              json_kv("risk_used_pct", str.tostring(daily_risk_percent, "#.###")) +
+              json_kv("risk_limit_pct", str.tostring(max_risk_per_day, "#.###")) +
+              json_kv("time", str.tostring(timenow)) +
+              json_close()
+    alert(payload, alert.freq_once_per_bar)
+
+// === DEBUG ALERTS (for troubleshooting) ===
+if enable_debug_mode and barstate.isconfirmed
+    // Alert every hour with confluence info
+    if bar_index % 12 == 0  // Every 12 bars (hourly on 5m chart)
+        payload = json_base("SR_FIB", "DEBUG_STATUS") +
+                  json_kv("confluence_long", str.tostring(confluence_long, "#.###")) +
+                  json_kv("confluence_short", str.tostring(confluence_short, "#.###")) +
+                  json_kv("basic_long", basic_long_conditions ? '"true"' : '"false"') +
+                  json_kv("sr_fib_long", sr_fib_long_conditions ? '"true"' : '"false"') +
+                  json_kv("risk_long", risk_long_conditions ? '"true"' : '"false"') +
+                  json_kv("safe_hours", safe_trading_hours ? '"true"' : '"false"') +
+                  json_kv("volatility_ok", volatility_ok ? '"true"' : '"false"') +
+                  json_kv("gmt_hour", str.tostring(current_hour)) +
+                  json_kv("atr_normalized", str.tostring(atr_normalized, "#.##")) +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+    // Alert when confluence > 0.3 but no signal
+    if confluence_long >= 0.3 and not long_signal
+        payload = json_base("SR_FIB", "HIGH_CONFLUENCE_NO_SIGNAL") +
+                  json_kv("confluence_long", str.tostring(confluence_long, "#.###")) +
+                  json_kv("missing_condition", not basic_long_conditions ? '"basic"' : not sr_fib_long_conditions ? '"sr_fib"' : not risk_long_conditions ? '"risk"' : '"threshold"') +
+                  json_kv("time", str.tostring(timenow)) +
+                  json_close()
+        alert(payload, alert.freq_once_per_bar)
+
+// ===============================================================================
+// DATA WINDOW PLOTS (for monitoring)
+// ===============================================================================
+
+plot(confluence_long, title="Confluence Long", color=color.new(color.green, 0), display=display.data_window)
+plot(confluence_short, title="Confluence Short", color=color.new(color.red, 0), display=display.data_window)
+plot(expected_profit_long, title="Exp Profit Long", color=color.new(color.green, 70), display=display.data_window)
+plot(expected_profit_short, title="Exp Profit Short", color=color.new(color.red, 70), display=display.data_window)
+plot(support_strength, title="Support Strength", color=color.new(color.green, 50), display=display.data_window)
+plot(resistance_strength, title="Resistance Strength", color=color.new(color.red, 50), display=display.data_window)
+plot(near_fib_618 ? 1 : 0, title="Near Fib 61.8%", color=color.new(color.yellow, 0), display=display.data_window)
+
+// ===============================================================================
+// STRATEGY NOTES V7 ENHANCEMENTS
+// ===============================================================================
+//
+// V7 MAJOR IMPROVEMENTS:
+// 1. FIBONACCI INTEGRATION:
+//    - Auto-detection of significant swing highs/lows
+//    - Dynamic Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
+//    - Fibonacci extension targets (127.2%, 161.8%, 261.8%)
+//    - Fibonacci-optimized take profit levels
+//    - Fibonacci + S/R confluence detection
+//
+// 2. ENHANCED S/R SYSTEM:
+//    - Volume-weighted strength calculation
+//    - Dynamic line width based on strength
+//    - Gradient zone visualization with transparency
+//    - Age-based S/R decay system
+//    - Break/hold confirmation system
+//    - Strength scoring algorithm
+//
+// 3. VISUAL ENHANCEMENTS:
+//    - Multiple visualization modes (Compact, Standard, Enhanced, Gradient)
+//    - Dynamic transparency based on strength and age
+//    - Enhanced labeling with strength metrics
+//    - Fibonacci level highlighting
+//    - Confluence markers
+//
+// 4. IMPROVED CONFLUENCE:
+//    - 6-factor confluence scoring (EMA, HTF, Momentum, S/R, Fibonacci, Volatility)
+//    - Fibonacci-S/R confluence detection
+//    - Dynamic signal sizing based on confluence strength
+//    - Enhanced entry condition filtering
+//
+// 5. ADVANCED ALERTS:
+//    - Fibonacci level touch alerts
+//    - S/R break confirmation alerts
+//    - Confluence confluence alerts
+//    - Enhanced JSON payloads with Fibonacci data
+//    - Module identification (SR_FIB)
+//
+// ===============================================================================
+// 🚀 ULTIMATE SIMPLE MODE DEBUG DASHBOARD
+// ===============================================================================
+
+if enable_simple_mode and barstate.islast
+    var table simple_debug = table.new(position.top_left, 2, 8, bgcolor=color.new(color.white, 90), border_width=1)
+    
+    table.cell(simple_debug, 0, 0, "🚀 SIMPLE MODE " + simple_mode_version, 
+               text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 20))
+    table.cell(simple_debug, 1, 0, "STATUS", 
+               text_color=color.white, text_size=size.small, bgcolor=color.new(color.purple, 20))
+    
+    table.cell(simple_debug, 0, 1, "Mode Active")
+    table.cell(simple_debug, 1, 1, "✅ ON", text_color=color.green, text_size=size.small)
+    
+    table.cell(simple_debug, 0, 2, "EMA8")
+    table.cell(simple_debug, 1, 2, str.tostring(ema_fast_line, "#.##"), text_color=color.blue, text_size=size.small)
+    
+    table.cell(simple_debug, 0, 3, "EMA21") 
+    table.cell(simple_debug, 1, 3, str.tostring(ema_slow_line, "#.##"), text_color=color.red, text_size=size.small)
+    
+    if simple_mode_version == "V3 - Triple EMA"
+        table.cell(simple_debug, 0, 4, "EMA50")
+        table.cell(simple_debug, 1, 4, str.tostring(simple_ema50, "#.##"), text_color=color.gray, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 5, "RSI")
+        table.cell(simple_debug, 1, 5, str.tostring(rsi_current, "#.#"), text_color=color.orange, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 6, "V3 Long Signal")
+        v3_long_active = simple_v3_long_signal
+        table.cell(simple_debug, 1, 6, v3_long_active ? "🟢 GO" : "❌ NO", 
+                  text_color=v3_long_active ? color.green : color.red, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 7, "V3 Short Signal")
+        v3_short_active = simple_v3_short_signal  
+        table.cell(simple_debug, 1, 7, v3_short_active ? "🔴 GO" : "❌ NO",
+                  text_color=v3_short_active ? color.red : color.gray, text_size=size.small)
+    else
+        table.cell(simple_debug, 0, 4, "V1 Long Signal")
+        v1_long_active = simple_v1_long_signal
+        table.cell(simple_debug, 1, 4, v1_long_active ? "🟢 GO" : "❌ NO",
+                  text_color=v1_long_active ? color.green : color.red, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 5, "V1 Short Signal") 
+        v1_short_active = simple_v1_short_signal
+        table.cell(simple_debug, 1, 5, v1_short_active ? "🔴 GO" : "❌ NO",
+                  text_color=v1_short_active ? color.red : color.gray, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 6, "Total Trades")
+        table.cell(simple_debug, 1, 6, str.tostring(strategy.closedtrades), text_color=color.blue, text_size=size.small)
+        
+        table.cell(simple_debug, 0, 7, "Win Rate")
+        win_rate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
+        table.cell(simple_debug, 1, 7, str.tostring(win_rate, "#.#") + "%",
+                  text_color=win_rate > 40 ? color.green : win_rate > 30 ? color.orange : color.red, text_size=size.small)
+
+// USAGE RECOMMENDATIONS:
+// - Enable Fibonacci for swing trading and higher probability entries
+// - Use Enhanced or Gradient Zones visual mode for clearer S/R
+// - Monitor confluence scores - aim for 60%+ for high-probability trades
+// - Enable volume-weighted S/R for better level reliability
+// - Use Fibonacci extensions for optimized take profit targets
+// - Set appropriate lookback periods based on timeframe (20-50 for scalping)
+//
+// FIBONACCI BEST PRACTICES:
+// - 61.8% and 38.2% are strongest retracement levels
+// - 127.2% extension is excellent for first take profit
+// - Confluence with S/R levels significantly increases success rate
+// - Monitor for rejection or acceptance at key Fibonacci levels
+//
+// ===============================================================================

@@ -1,0 +1,79 @@
+//@version=5
+indicator("🎯 Sniper Signals - Simple", overlay=true)
+
+// =====================
+// === BASIC PARAMETERS
+// =====================
+
+// Moving Averages
+ema_fast_period = input.int(20, "EMA Fast Period", minval=5, maxval=200)
+ema_slow_period = input.int(60, "EMA Slow Period", minval=20, maxval=200)
+
+// RSI
+rsi_period = input.int(14, "RSI Period", minval=2, maxval=50)
+rsi_oversold = input.int(30, "RSI Oversold Level", minval=10, maxval=40)
+rsi_overbought = input.int(70, "RSI Overbought Level", minval=60, maxval=90)
+
+// Confidence
+min_confidence = input.float(0.60, "Minimum Confidence Level", minval=0.1, maxval=1.0, step=0.01)
+
+// =====================
+// === CALCULATIONS
+// =====================
+
+// Moving Averages
+ema_fast = ta.ema(close, ema_fast_period)
+ema_slow = ta.ema(close, ema_slow_period)
+
+// RSI
+rsi = ta.rsi(close, rsi_period)
+
+// =====================
+// === SIGNAL CONDITIONS
+// =====================
+
+// Basic trend conditions
+trend_bullish = ema_fast > ema_slow and close > ema_fast
+trend_bearish = ema_fast < ema_slow and close < ema_fast
+
+// RSI conditions
+rsi_long_condition = rsi < rsi_oversold
+rsi_short_condition = rsi > rsi_overbought
+
+// Combined conditions
+long_condition = trend_bullish and rsi_long_condition
+short_condition = trend_bearish and rsi_short_condition
+
+// Alert triggers (simple boolean)
+long_alert = long_condition and not long_condition[1]  // Trigger only on new signal
+short_alert = short_condition and not short_condition[1]  // Trigger only on new signal
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+// Plot EMAs
+plot(ema_fast, "EMA Fast", color=color.blue, linewidth=1)
+plot(ema_slow, "EMA Slow", color=color.red, linewidth=1)
+
+// Plot signals
+plotshape(long_alert, title="Long Signal", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal)
+plotshape(short_alert, title="Short Signal", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.normal)
+
+// =====================
+// === ALERT CONDITIONS
+// =====================
+
+// Simple and explicit alert conditions
+alertcondition(long_alert, title="🎯 Sniper Long Signal", 
+               message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": 75, "timestamp": {{time}}, "strategy": "Sniper Method", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+alertcondition(short_alert, title="🎯 Sniper Short Signal", 
+               message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": 75, "timestamp": {{time}}, "strategy": "Sniper Method", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// Additional test conditions to ensure they appear
+alertcondition(ta.crossover(ema_fast, ema_slow), title="🟢 Test Long Signal", 
+               message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": 50, "timestamp": {{time}}, "strategy": "Test Method", "timeframe": "{{interval}}", "token": "test-signal"}')
+
+alertcondition(ta.crossunder(ema_fast, ema_slow), title="🔴 Test Short Signal", 
+               message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": 50, "timestamp": {{time}}, "strategy": "Test Method", "timeframe": "{{interval}}", "token": "test-signal"}')

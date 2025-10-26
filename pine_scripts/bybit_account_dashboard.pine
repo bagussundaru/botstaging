@@ -1,0 +1,182 @@
+//@version=5
+indicator("🎯 Bybit Account Dashboard", shorttitle="Bybit Dashboard", overlay=true)
+
+// ==================== ACCOUNT INFORMATION INPUTS ====================
+// Input untuk informasi akun yang akan diupdate secara manual atau melalui webhook
+account_balance = input.float(21.87, title="💰 Available Balance (USDT)", group="Account Info")
+total_balance = input.float(31.13, title="💎 Total Balance (USDT)", group="Account Info")
+daily_pnl = input.float(0.0, title="📊 Daily P&L (USDT)", group="Account Info")
+daily_trades = input.int(0, title="🔄 Daily Trades", group="Account Info")
+max_daily_trades = input.int(8, title="⚡ Max Daily Trades", group="Account Info")
+
+// ==================== POSITION INFORMATION ====================
+position_symbol = input.string("ETHUSDT", title="📈 Position Symbol", group="Position Info")
+position_side = input.string("Buy", title="📍 Position Side", options=["Buy", "Sell", "None"], group="Position Info")
+position_size = input.float(0.02, title="📏 Position Size", group="Position Info")
+entry_price = input.float(4354.96, title="🎯 Entry Price", group="Position Info")
+current_pnl = input.float(-0.53, title="💹 Unrealized P&L", group="Position Info")
+pnl_percentage = input.float(-1.78, title="📊 P&L Percentage (%)", group="Position Info")
+
+// ==================== RISK MANAGEMENT ====================
+stop_loss_price = input.float(4294.44, title="🛡️ Stop Loss", group="Risk Management")
+take_profit_price = input.float(4489.22, title="🎯 Take Profit", group="Risk Management")
+risk_per_trade = input.float(2.0, title="⚖️ Risk per Trade (%)", group="Risk Management")
+
+// ==================== DISPLAY SETTINGS ====================
+show_account_info = input.bool(true, title="Show Account Info", group="Display Settings")
+show_position_info = input.bool(true, title="Show Position Info", group="Display Settings")
+show_risk_info = input.bool(true, title="Show Risk Management", group="Display Settings")
+dashboard_position = input.string("Top Right", title="Dashboard Position", 
+     options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group="Display Settings")
+
+// ==================== COLOR SETTINGS ====================
+profit_color = input.color(color.new(color.green, 20), title="Profit Color", group="Colors")
+loss_color = input.color(color.new(color.red, 20), title="Loss Color", group="Colors")
+neutral_color = input.color(color.new(color.blue, 20), title="Neutral Color", group="Colors")
+bg_color = input.color(color.new(color.black, 85), title="Background Color", group="Colors")
+
+// ==================== CALCULATIONS ====================
+// Menghitung margin yang digunakan
+used_margin = total_balance - account_balance
+margin_ratio = used_margin / total_balance * 100
+
+// Menghitung status trading harian
+trades_remaining = max_daily_trades - daily_trades
+trade_capacity = daily_trades / max_daily_trades * 100
+
+// Menentukan warna berdasarkan P&L
+pnl_color = current_pnl > 0 ? profit_color : current_pnl < 0 ? loss_color : neutral_color
+daily_pnl_color = daily_pnl > 0 ? profit_color : daily_pnl < 0 ? loss_color : neutral_color
+
+// ==================== POSITION CALCULATION ====================
+// Menentukan posisi dashboard
+var table_position = switch dashboard_position
+    "Top Left" => position.top_left
+    "Top Right" => position.top_right
+    "Bottom Left" => position.bottom_left
+    "Bottom Right" => position.bottom_right
+    => position.top_right
+
+// ==================== DASHBOARD TABLE ====================
+if barstate.islast and (show_account_info or show_position_info or show_risk_info)
+    // Membuat tabel dashboard
+    var dashboard_table = table.new(table_position, 2, 15, bgcolor=bg_color, border_width=2, border_color=color.white)
+    
+    // Header
+    table.cell(dashboard_table, 0, 0, "🎯 BYBIT ACCOUNT DASHBOARD", text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 50))
+    table.cell(dashboard_table, 1, 0, syminfo.ticker, text_color=color.yellow, text_size=size.normal, bgcolor=color.new(color.blue, 50))
+    
+    row = 1
+    
+    // ==================== ACCOUNT INFORMATION ====================
+    if show_account_info
+        table.cell(dashboard_table, 0, row, "💰 Available Balance", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(account_balance, "#.##") + " USDT", text_color=color.lime, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "💎 Total Balance", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(total_balance, "#.##") + " USDT", text_color=color.aqua, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "🔒 Used Margin", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(used_margin, "#.##") + " (" + str.tostring(margin_ratio, "#.#") + "%)", text_color=color.orange, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "📊 Daily P&L", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(daily_pnl, "#.##") + " USDT", text_color=daily_pnl_color, text_size=size.small)
+        row += 1
+    
+    // ==================== TRADING ACTIVITY ====================
+    if show_account_info
+        table.cell(dashboard_table, 0, row, "🔄 Daily Trades", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(daily_trades) + "/" + str.tostring(max_daily_trades), text_color=color.yellow, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "⚡ Trade Capacity", text_color=color.white, text_size=size.small)
+        capacity_color = trade_capacity > 80 ? color.red : trade_capacity > 50 ? color.orange : color.lime
+        table.cell(dashboard_table, 1, row, str.tostring(trade_capacity, "#.#") + "%", text_color=capacity_color, text_size=size.small)
+        row += 1
+    
+    // ==================== POSITION INFORMATION ====================
+    if show_position_info and position_side != "None"
+        table.cell(dashboard_table, 0, row, "📈 Position", text_color=color.white, text_size=size.small)
+        position_color = position_side == "Buy" ? color.lime : color.red
+        table.cell(dashboard_table, 1, row, position_symbol + " " + position_side, text_color=position_color, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "📏 Size", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(position_size, "#.####"), text_color=color.white, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "🎯 Entry Price", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, "$" + str.tostring(entry_price, "#.##"), text_color=color.yellow, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "💹 Unrealized P&L", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(current_pnl, "#.##") + " (" + str.tostring(pnl_percentage, "#.##") + "%)", text_color=pnl_color, text_size=size.small)
+        row += 1
+    
+    // ==================== RISK MANAGEMENT ====================
+    if show_risk_info and position_side != "None"
+        table.cell(dashboard_table, 0, row, "🛡️ Stop Loss", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, "$" + str.tostring(stop_loss_price, "#.##"), text_color=color.red, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "🎯 Take Profit", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, "$" + str.tostring(take_profit_price, "#.##"), text_color=color.lime, text_size=size.small)
+        row += 1
+        
+        table.cell(dashboard_table, 0, row, "⚖️ Risk/Trade", text_color=color.white, text_size=size.small)
+        table.cell(dashboard_table, 1, row, str.tostring(risk_per_trade, "#.#") + "%", text_color=color.orange, text_size=size.small)
+        row += 1
+
+// ==================== PRICE LEVEL LINES ====================
+// Menampilkan garis Stop Loss dan Take Profit jika ada posisi aktif
+if show_risk_info and position_side != "None"
+    // Stop Loss Line
+    var line sl_line = na
+    if barstate.islast
+        if not na(sl_line)
+            line.delete(sl_line)
+        sl_line := line.new(bar_index - 50, stop_loss_price, bar_index + 10, stop_loss_price, 
+                           color=color.red, style=line.style_dashed, width=2)
+        line.set_extend(sl_line, extend.right)
+    
+    // Take Profit Line
+    var line tp_line = na
+    if barstate.islast
+        if not na(tp_line)
+            line.delete(tp_line)
+        tp_line := line.new(bar_index - 50, take_profit_price, bar_index + 10, take_profit_price, 
+                           color=color.lime, style=line.style_dashed, width=2)
+        line.set_extend(tp_line, extend.right)
+    
+    // Entry Price Line
+    var line entry_line = na
+    if barstate.islast
+        if not na(entry_line)
+            line.delete(entry_line)
+        entry_line := line.new(bar_index - 50, entry_price, bar_index + 10, entry_price, 
+                              color=color.yellow, style=line.style_solid, width=1)
+        line.set_extend(entry_line, extend.right)
+
+// ==================== ALERTS ====================
+// Alert untuk kondisi tertentu
+alertcondition(current_pnl > 0 and current_pnl[1] <= 0, title="Position Profitable", message="Position {{ticker}} is now profitable!")
+alertcondition(current_pnl < 0 and current_pnl[1] >= 0, title="Position Loss", message="Position {{ticker}} is now in loss!")
+alertcondition(daily_trades >= max_daily_trades, title="Max Trades Reached", message="Maximum daily trades reached for {{ticker}}!")
+
+// ==================== BACKGROUND COLORING ====================
+// Mengubah warna background berdasarkan status P&L
+bgcolor_transparency = 95
+position_bg_color = position_side == "Buy" ? color.new(color.green, bgcolor_transparency) : 
+                   position_side == "Sell" ? color.new(color.red, bgcolor_transparency) : na
+
+if show_position_info and position_side != "None"
+    bgcolor(position_bg_color)
+
+// ==================== PLOT UNTUK MONITORING ====================
+// Plot invisible untuk tracking
+plot(account_balance, title="Account Balance", display=display.none)
+plot(current_pnl, title="Current P&L", display=display.none)
+plot(daily_pnl, title="Daily P&L", display=display.none)

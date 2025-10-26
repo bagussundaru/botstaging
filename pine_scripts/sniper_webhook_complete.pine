@@ -1,0 +1,439 @@
+//@version=5
+strategy("🎯 Sniper Bybit Webhook Strategy", overlay=true, max_bars_back=500)
+
+// =====================
+// === WEBHOOK CONFIGURATION
+// =====================
+webhook_token = input.string("sniper-bybit-production-2024", "Webhook Token", group="🔐 Security")
+webhook_url = input.string("http://103.189.234.15/webhook_v1", "Webhook URL", group="🔐 Security")
+
+// =====================
+// === METODE SNIPER PARAMETERS
+// =====================
+
+// 1. Trend Filter - Moving Averages
+trend_period = input.int(20, "EMA Trend Period", minval=5, maxval=200, group="📈 Trend Filter")
+trend_period_slow = input.int(60, "EMA Slow Period", minval=20, maxval=200, group="📈 Trend Filter")
+trend_htf = input.timeframe("60", "Higher Timeframe", group="📈 Trend Filter")
+
+// 2. RSI Oscillator
+rsi_period = input.int(14, "RSI Period", minval=2, maxval=50, group="⚡ Momentum")
+rsi_oversold = input.int(30, "RSI Oversold Level", minval=10, maxval=40, group="⚡ Momentum")
+rsi_overbought = input.int(70, "RSI Overbought Level", minval=60, maxval=90, group="⚡ Momentum")
+
+// 3. Support & Resistance Detection
+pivot_left = input.int(5, "Pivot Left Bars", minval=1, maxval=20, group="🎯 Support & Resistance")
+pivot_right = input.int(5, "Pivot Right Bars", minval=1, maxval=20, group="🎯 Support & Resistance")
+sr_tolerance_pct = input.float(0.003, "S&R Zone Tolerance (%)", minval=0.0001, maxval=0.01, step=0.0001, group="🎯 Support & Resistance")
+
+// 4. Risk Management
+atr_period = input.int(14, "ATR Period", minval=5, maxval=50, group="🛡️ Risk Management")
+atr_sl_multiplier = input.float(1.5, "ATR SL Multiplier", minval=0.5, maxval=3.0, step=0.1, group="🛡️ Risk Management")
+rr_target = input.float(2.0, "Risk Reward Target", minval=1.0, maxval=5.0, step=0.1, group="🛡️ Risk Management")
+
+// 5. Execution Settings
+min_confidence = input.float(0.35, "Minimum Confidence Level", minval=0.1, maxval=1.0, step=0.01, group="⚙️ Execution")
+cooldown_bars = input.int(5, "Cooldown Bars After Signal", minval=0, maxval=50, group="⚙️ Execution")
+alert_cooldown_bars = input.int(15, "Alert Cooldown Bars", minval=5, maxval=50, group="⚙️ Execution")
+allow_long = input.bool(true, "Allow Long Signals", group="⚙️ Execution")
+allow_short = input.bool(true, "Allow Short Signals", group="⚙️ Execution")
+
+// =====================
+// === CORE INDICATORS
+// =====================
+
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+[close_htf, ema_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period)])
+
+rsi = ta.rsi(close, rsi_period)
+rsi_prev = ta.rsi(close[1], rsi_period)
+atr = ta.atr(atr_period)
+
+// =====================
+// === SUPPORT & RESISTANCE
+// =====================
+
+pivot_high = ta.pivothigh(high, pivot_left, pivot_right)
+pivot_low = ta.pivotlow(low, pivot_left, pivot_right)
+
+var float[] resistance_levels = array.new_float()
+var float[] support_levels = array.new_float()
+
+if not na(pivot_high)
+    if array.size(resistance_levels) >= 5
+        array.shift(resistance_levels)
+    array.push(resistance_levels, pivot_high)
+
+if not na(pivot_low)
+    if array.size(support_levels) >= 5
+        array.shift(support_levels)
+    array.push(support_levels, pivot_low)
+
+get_nearest_resistance() =>
+    float nearest = na
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            level = array.get(resistance_levels, i)
+            if level > close and (na(nearest) or level < nearest)
+                nearest := level
+    nearest
+
+get_nearest_support() =>
+    float nearest = na
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            level = array.get(support_levels, i)
+            if level < close and (na(nearest) or level > nearest)
+                nearest := level
+    nearest
+
+nearest_resistance = get_nearest_resistance()
+nearest_support = get_nearest_support()
+
+is_at_support = not na(nearest_support) and close <= (nearest_support * (1 + sr_tolerance_pct)) and close >= (nearest_support * (1 - sr_tolerance_pct))
+is_at_resistance = not na(nearest_resistance) and close >= (nearest_resistance * (1 - sr_tolerance_pct)) and close <= (nearest_resistance * (1 + sr_tolerance_pct))
+
+// =====================
+// === PRICE ACTION PATTERNS
+// =====================
+
+body_size = math.abs(close - open)
+upper_wick = high - math.max(close, open)
+lower_wick = math.min(close, open) - low
+total_range = high - low
+
+is_doji = body_size <= (total_range * 0.1) and total_range > 0
+is_hammer = (close > open) and (lower_wick >= body_size * 2) and (upper_wick <= body_size * 0.5)
+is_shooting_star = (close < open) and (upper_wick >= body_size * 2) and (lower_wick <= body_size * 0.5)
+is_bullish_engulfing = (close > open) and (close[1] < open[1]) and (close > open[1]) and (open < close[1])
+is_bearish_engulfing = (close < open) and (close[1] > open[1]) and (close < open[1]) and (open > close[1])
+
+bullish_price_action = is_hammer or is_bullish_engulfing or (is_doji and is_at_support)
+bearish_price_action = is_shooting_star or is_bearish_engulfing or (is_doji and is_at_resistance)
+
+// =====================
+// === TREND ANALYSIS
+// =====================
+
+is_uptrend = close > ema_fast and ema_fast > ema_slow
+is_downtrend = close < ema_fast and ema_fast < ema_slow
+htf_uptrend = close_htf > ema_htf
+htf_downtrend = close_htf < ema_htf
+
+trend_aligned_bull = is_uptrend and htf_uptrend
+trend_aligned_bear = is_downtrend and htf_downtrend
+
+// =====================
+// === ADVANCED INDICATORS
+// =====================
+
+stoch_k = ta.stoch(close, high, low, 14)
+stoch_d = ta.sma(stoch_k, 3)
+[macd_line, signal_line, macd_histogram] = ta.macd(close, 12, 26, 9)
+williams_r = ta.wpr(14)
+
+vwap = ta.vwap(hlc3)
+volume_sma = ta.sma(volume, 20)
+volume_ratio = volume / volume_sma
+is_high_volume = volume_ratio > 1.5
+
+// Fibonacci levels
+swing_high = ta.highest(high, 20)
+swing_low = ta.lowest(low, 20)
+fib_618 = swing_low + (swing_high - swing_low) * 0.618
+fib_382 = swing_low + (swing_high - swing_low) * 0.382
+
+at_fib_618 = math.abs(close - fib_618) / close < 0.005
+at_fib_382 = math.abs(close - fib_382) / close < 0.005
+
+// Divergence detection
+n_div_lookback = 12
+bullish_divergence = (low < ta.lowest(low, n_div_lookback)) and (rsi > ta.lowest(rsi, n_div_lookback))
+bearish_divergence = (high > ta.highest(high, n_div_lookback)) and (rsi < ta.highest(rsi, n_div_lookback))
+
+rsi_higher_low = rsi > rsi[1] and low < low[1]
+rsi_lower_high = rsi < rsi[1] and high > high[1]
+macd_bull_div = macd_line > macd_line[1] and low < low[1]
+macd_bear_div = macd_line < macd_line[1] and high > high[1]
+
+enhanced_bull_div = (rsi_higher_low or macd_bull_div) and bullish_divergence
+enhanced_bear_div = (rsi_lower_high or macd_bear_div) and bearish_divergence
+
+// =====================
+// === RSI MOMENTUM
+// =====================
+
+rsi_bullish = (rsi < rsi_oversold and rsi > rsi_prev + 2) or (rsi < 35 and rsi > rsi_prev + 3 and close > ema_fast)
+rsi_bearish = (rsi > rsi_overbought and rsi < rsi_prev - 2) or (rsi > 65 and rsi < rsi_prev - 3 and close < ema_fast)
+
+volume_confirmation = volume > ta.sma(volume, 20) * 0.8
+atr_filter = atr > ta.sma(atr, 14) * 0.3
+
+// =====================
+// === CONFIDENCE SCORING SYSTEM
+// =====================
+
+// Trend Score
+trend_score_bull = 0.0
+trend_score_bear = 0.0
+
+if trend_aligned_bull
+    trend_score_bull += 0.4
+if htf_uptrend
+    trend_score_bull += 0.3
+if close > vwap
+    trend_score_bull += 0.3
+
+if trend_aligned_bear
+    trend_score_bear += 0.4
+if htf_downtrend
+    trend_score_bear += 0.3
+if close < vwap
+    trend_score_bear += 0.3
+
+// Momentum Score
+momentum_score_bull = 0.0
+momentum_score_bear = 0.0
+
+if rsi_bullish or (rsi < 40 and rsi > rsi[1])
+    momentum_score_bull += 0.25
+if rsi_bearish or (rsi > 60 and rsi < rsi[1])
+    momentum_score_bear += 0.25
+
+if stoch_k < 20 and stoch_k > stoch_d
+    momentum_score_bull += 0.25
+if stoch_k > 80 and stoch_k < stoch_d
+    momentum_score_bear += 0.25
+
+if macd_line > signal_line and macd_histogram > macd_histogram[1]
+    momentum_score_bull += 0.25
+if macd_line < signal_line and macd_histogram < macd_histogram[1]
+    momentum_score_bear += 0.25
+
+if williams_r < -80 and williams_r > williams_r[1]
+    momentum_score_bull += 0.25
+if williams_r > -20 and williams_r < williams_r[1]
+    momentum_score_bear += 0.25
+
+// Structure Score
+structure_score_bull = 0.0
+structure_score_bear = 0.0
+
+if is_at_support or at_fib_618 or at_fib_382
+    structure_score_bull += 0.5
+if bullish_price_action
+    structure_score_bull += 0.5
+
+if is_at_resistance or at_fib_618 or at_fib_382
+    structure_score_bear += 0.5
+if bearish_price_action
+    structure_score_bear += 0.5
+
+// Volume Score
+volume_score_bull = 0.0
+volume_score_bear = 0.0
+
+if is_high_volume and close > open
+    volume_score_bull += 0.6
+if close > vwap and volume_ratio > 1.2
+    volume_score_bull += 0.4
+
+if is_high_volume and close < open
+    volume_score_bear += 0.6
+if close < vwap and volume_ratio > 1.2
+    volume_score_bear += 0.4
+
+// Divergence Score
+divergence_score_bull = enhanced_bull_div ? 1.0 : 0.0
+divergence_score_bear = enhanced_bear_div ? 1.0 : 0.0
+
+// Final Confidence Calculation
+w_trend_final = 0.25
+w_momentum_final = 0.30
+w_structure_final = 0.20
+w_volume_final = 0.15
+w_divergence_final = 0.10
+
+ultimate_bull_confidence = (trend_score_bull * w_trend_final) + 
+                          (momentum_score_bull * w_momentum_final) + 
+                          (structure_score_bull * w_structure_final) + 
+                          (volume_score_bull * w_volume_final) + 
+                          (divergence_score_bull * w_divergence_final)
+
+ultimate_bear_confidence = (trend_score_bear * w_trend_final) + 
+                          (momentum_score_bear * w_momentum_final) + 
+                          (structure_score_bear * w_structure_final) + 
+                          (volume_score_bear * w_volume_final) + 
+                          (divergence_score_bear * w_divergence_final)
+
+confidence_bull = math.min(1.0, ultimate_bull_confidence)
+confidence_bear = math.min(1.0, ultimate_bear_confidence)
+
+// =====================
+// === CALCULATE SL/TP LEVELS
+// =====================
+
+calc_sl_tp_long() =>
+    atr_sl = close - (atr * atr_sl_multiplier)
+    sr_sl = na(nearest_support) ? atr_sl : nearest_support - (atr * 0.2)
+    swing_sl = ta.lowest(low, 10) - (atr * 0.1)
+    
+    sl_price = math.max(atr_sl, math.max(sr_sl, swing_sl))
+    sl_distance = close - sl_price
+    
+    base_tp = close + (sl_distance * rr_target)
+    resistance_tp = na(nearest_resistance) ? base_tp : math.min(base_tp, nearest_resistance - (atr * 0.1))
+    
+    [sl_price, resistance_tp]
+
+calc_sl_tp_short() =>
+    atr_sl = close + (atr * atr_sl_multiplier)
+    sr_sl = na(nearest_resistance) ? atr_sl : nearest_resistance + (atr * 0.2)
+    swing_sl = ta.highest(high, 10) + (atr * 0.1)
+    
+    sl_price = math.min(atr_sl, math.min(sr_sl, swing_sl))
+    sl_distance = sl_price - close
+    
+    base_tp = close - (sl_distance * rr_target)
+    support_tp = na(nearest_support) ? base_tp : math.max(base_tp, nearest_support + (atr * 0.1))
+    
+    [sl_price, support_tp]
+
+[sl_long, tp_long] = calc_sl_tp_long()
+[sl_short, tp_short] = calc_sl_tp_short()
+
+// =====================
+// === SIGNAL GENERATION
+// =====================
+
+var int last_long_signal = na
+var int last_short_signal = na
+var int last_alert_bar = na
+
+base_can_enter_long = allow_long and confidence_bull >= min_confidence and 
+                 volume_confirmation and atr_filter and
+                 (na(last_long_signal) or (bar_index - last_long_signal) > cooldown_bars) and
+                 not (rsi > 85)
+
+base_can_enter_short = allow_short and confidence_bear >= min_confidence and 
+                  volume_confirmation and atr_filter and
+                  (na(last_short_signal) or (bar_index - last_short_signal) > cooldown_bars) and
+                  not (rsi < 15)
+
+can_enter_long = base_can_enter_long and (not base_can_enter_short or confidence_bull > confidence_bear)
+can_enter_short = base_can_enter_short and (not base_can_enter_long or confidence_bear > confidence_bull)
+
+if can_enter_long
+    last_long_signal := bar_index
+if can_enter_short
+    last_short_signal := bar_index
+
+// =====================
+// === ALERT SYSTEM WITH WEBHOOK
+// =====================
+
+alert_cooldown_ok = na(last_alert_bar) or (bar_index - last_alert_bar) >= alert_cooldown_bars
+
+bull_signal_strength = can_enter_long ? confidence_bull : 0.0
+bear_signal_strength = can_enter_short ? confidence_bear : 0.0
+
+dominant_is_bull = bull_signal_strength > bear_signal_strength and bull_signal_strength >= min_confidence
+dominant_is_bear = bear_signal_strength > bull_signal_strength and bear_signal_strength >= min_confidence
+
+long_alert_condition = dominant_is_bull and alert_cooldown_ok and can_enter_long
+short_alert_condition = dominant_is_bear and alert_cooldown_ok and can_enter_short
+
+if long_alert_condition
+    last_alert_bar := bar_index
+if short_alert_condition
+    last_alert_bar := bar_index
+
+// =====================
+// === HIDDEN PLOTS FOR WEBHOOK DATA
+// =====================
+
+// Plot values untuk digunakan sebagai {{plot_X}} di alert message
+plot(math.round(confidence_bull * 1000) / 10, "Bull Confidence %", display=display.none)  // {{plot_0}}
+plot(math.round(confidence_bear * 1000) / 10, "Bear Confidence %", display=display.none) // {{plot_1}}
+plot(sl_long, "SL Long", display=display.none)     // {{plot_2}}
+plot(tp_long, "TP Long", display=display.none)     // {{plot_3}}
+plot(sl_short, "SL Short", display=display.none)   // {{plot_4}}
+plot(tp_short, "TP Short", display=display.none)   // {{plot_5}}
+plot(atr, "ATR Value", display=display.none)       // {{plot_6}}
+
+// =====================
+// === WEBHOOK ALERTS
+// =====================
+
+// LONG Signal Alert
+alertcondition(long_alert_condition, 
+               title="🎯 SNIPER LONG SIGNAL", 
+               message='{"exchange": "bybit", "symbol": "{{ticker}}", "side": "BUY", "action": "OPEN", "signal_type": "SNIPER", "price": {{close}}, "stop_loss": {{plot_2}}, "take_profit": {{plot_3}}, "atr": {{plot_6}}, "confidence": {{plot_0}}, "timeframe": "{{interval}}", "timestamp": "{{time}}", "token": "sniper-bybit-production-2024"}')
+
+// SHORT Signal Alert  
+alertcondition(short_alert_condition, 
+               title="🎯 SNIPER SHORT SIGNAL", 
+               message='{"exchange": "bybit", "symbol": "{{ticker}}", "side": "SELL", "action": "OPEN", "signal_type": "SNIPER", "price": {{close}}, "stop_loss": {{plot_4}}, "take_profit": {{plot_5}}, "atr": {{plot_6}}, "confidence": {{plot_1}}, "timeframe": "{{interval}}", "timestamp": "{{time}}", "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === STRATEGY EXECUTION (FOR BACKTESTING)
+// =====================
+
+if long_alert_condition
+    strategy.entry("LONG", strategy.long, comment="🎯 SNIPER LONG")
+    strategy.exit("LONG EXIT", "LONG", stop=sl_long, limit=tp_long)
+
+if short_alert_condition
+    strategy.entry("SHORT", strategy.short, comment="🎯 SNIPER SHORT")
+    strategy.exit("SHORT EXIT", "SHORT", stop=sl_short, limit=tp_short)
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+plot(ema_fast, "EMA Fast", color=color.blue, linewidth=2)
+plot(ema_slow, "EMA Slow", color=color.red, linewidth=2)
+plot(ema_htf, "EMA HTF", color=color.purple, linewidth=2, style=plot.style_circles)
+plot(vwap, "VWAP", color=color.new(color.orange, 30), linewidth=2)
+
+// Support & Resistance Zones
+if not na(nearest_support)
+    support_top = nearest_support * (1 + sr_tolerance_pct)
+    support_bottom = nearest_support * (1 - sr_tolerance_pct)
+    box.new(bar_index - 1, support_top, bar_index, support_bottom, 
+            border_color=color.new(color.green, 70), bgcolor=color.new(color.green, 90))
+
+if not na(nearest_resistance)
+    resistance_top = nearest_resistance * (1 + sr_tolerance_pct)
+    resistance_bottom = nearest_resistance * (1 - sr_tolerance_pct)
+    box.new(bar_index - 1, resistance_top, bar_index, resistance_bottom, 
+            border_color=color.new(color.red, 70), bgcolor=color.new(color.red, 90))
+
+// Signal Shapes
+plotshape(long_alert_condition ? low : na, "🎯 LONG", 
+          shape.triangleup, location.belowbar, color.lime, size=size.normal, text="LONG")
+plotshape(short_alert_condition ? high : na, "🎯 SHORT", 
+          shape.triangledown, location.abovebar, color.red, size=size.normal, text="SHORT")
+
+// Confidence Levels
+plot(confidence_bull * 100, "Bull Confidence %", color=color.new(color.green, 30), linewidth=2)
+plot(confidence_bear * 100, "Bear Confidence %", color=color.new(color.red, 30), linewidth=2)
+hline(min_confidence * 100, "Min Confidence", color=color.yellow, linestyle=hline.style_dashed)
+
+// Divergence Markers
+plotchar(enhanced_bull_div, "Bull Divergence", "D", location.belowbar, color.aqua, size=size.small)
+plotchar(enhanced_bear_div, "Bear Divergence", "D", location.abovebar, color.fuchsia, size=size.small)
+
+// Volume Background
+bgcolor(volume_confirmation ? color.new(color.green, 95) : na)
+
+// Debug Information
+if barstate.islast
+    debug_text = "🎯 SNIPER INDICATOR\n" +
+                 "Bull: " + str.tostring(confidence_bull, "#.##") + " | Bear: " + str.tostring(confidence_bear, "#.##") + "\n" +
+                 "RSI: " + str.tostring(rsi, "#.#") + " | Vol: " + str.tostring(volume_ratio, "#.##") + "\n" +
+                 "Long: " + str.tostring(can_enter_long) + " | Short: " + str.tostring(can_enter_short)
+    
+    label.new(bar_index, high, debug_text, style=label.style_label_left, 
+              color=color.new(color.gray, 10), textcolor=color.white, size=size.small)

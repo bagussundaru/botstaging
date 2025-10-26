@@ -1,0 +1,73 @@
+//@version=5
+strategy("RSI Bybit Automation", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=1)
+
+// ============================================================================
+// PARAMETER INPUT
+// ============================================================================
+rsi_length = input.int(14, title="RSI Length", minval=1)
+rsi_oversold = input.int(30, title="RSI Oversold Level", minval=1, maxval=50)
+rsi_overbought = input.int(70, title="RSI Overbought Level", minval=50, maxval=99)
+use_alerts = input.bool(true, title="Enable Webhook Alerts")
+
+// ============================================================================
+// INDIKATOR RSI
+// ============================================================================
+rsi = ta.rsi(close, rsi_length)
+
+// Plot RSI untuk visualisasi
+plot(rsi, title="RSI", color=color.purple, linewidth=2)
+hline(rsi_oversold, "Oversold", color=color.green, linestyle=hline.style_dashed)
+hline(rsi_overbought, "Overbought", color=color.red, linestyle=hline.style_dashed)
+hline(50, "Midline", color=color.gray, linestyle=hline.style_dotted)
+
+// ============================================================================
+// KONDISI TRADING
+// ============================================================================
+// Kondisi LONG Entry: RSI turun di bawah 30
+long_condition = ta.crossunder(rsi, rsi_oversold)
+
+// Kondisi LONG Exit: RSI naik di atas 70
+long_exit_condition = ta.crossover(rsi, rsi_overbought)
+
+// ============================================================================
+// EKSEKUSI STRATEGY (untuk backtesting)
+// ============================================================================
+if long_condition
+    strategy.entry("LONG", strategy.long, comment="RSI Long Entry")
+
+if long_exit_condition
+    strategy.close("LONG", comment="RSI Long Exit")
+
+// ============================================================================
+// WEBHOOK ALERTS untuk Bybit API
+// ============================================================================
+if use_alerts
+    // Alert untuk OPEN LONG Position
+    if long_condition
+        alert_message_open = '{"exchange": "Bybit", "symbol": "' + syminfo.ticker + '", "side": "BUY", "action": "OPEN", "qty": "1", "price": "' + str.tostring(close) + '", "rsi": "' + str.tostring(rsi) + '", "timeframe": "' + timeframe.period + '", "timestamp": "' + str.tostring(time) + '"}'
+        alert(alert_message_open, alert.freq_once_per_bar)
+    
+    // Alert untuk CLOSE LONG Position  
+    if long_exit_condition
+        alert_message_close = '{"exchange": "Bybit", "symbol": "' + syminfo.ticker + '", "side": "SELL", "action": "CLOSE", "qty": "1", "price": "' + str.tostring(close) + '", "rsi": "' + str.tostring(rsi) + '", "timeframe": "' + timeframe.period + '", "timestamp": "' + str.tostring(time) + '"}'
+        alert(alert_message_close, alert.freq_once_per_bar)
+
+// ============================================================================
+// VISUALISASI SINYAL
+// ============================================================================
+// Tampilkan sinyal LONG entry
+plotshape(long_condition, title="LONG Entry", location=location.belowbar, 
+          style=shape.labelup, size=size.normal, color=color.green, 
+          text="LONG\nRSI:" + str.tostring(math.round(rsi, 2)))
+
+// Tampilkan sinyal LONG exit
+plotshape(long_exit_condition, title="LONG Exit", location=location.abovebar, 
+          style=shape.labeldown, size=size.normal, color=color.red, 
+          text="EXIT\nRSI:" + str.tostring(math.round(rsi, 2)))
+
+// ============================================================================
+// BACKGROUND COLORING untuk kondisi RSI
+// ============================================================================
+bgcolor(rsi < rsi_oversold ? color.new(color.green, 90) : 
+        rsi > rsi_overbought ? color.new(color.red, 90) : na, 
+        title="RSI Background")

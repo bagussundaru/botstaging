@@ -1,0 +1,789 @@
+//@version=5
+strategy("Metode Sniper - Steven G. Tunas", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=2, initial_capital=500, currency=currency.USD, calc_on_every_tick=false)
+
+// =====================
+// === METODE SNIPER PARAMETERS
+// =====================
+
+// 1. Trend Filter - Moving Averages
+trend_period = input.int(20, "EMA Trend Period (Trend_Period)", minval=5, maxval=200, group="Trend Filter")
+trend_period_slow = input.int(60, "EMA Slow Period", minval=20, maxval=200, group="Trend Filter")
+trend_htf = input.timeframe("60", "Higher Timeframe (Trend_HTF)", group="Trend Filter")
+
+// 2. RSI Oscillator
+rsi_period = input.int(14, "RSI Period", minval=2, maxval=50, group="Momentum")
+rsi_oversold = input.int(30, "RSI Oversold Level", minval=10, maxval=40, group="Momentum")
+rsi_overbought = input.int(70, "RSI Overbought Level", minval=60, maxval=90, group="Momentum")
+
+// 3. Support & Resistance Detection
+pivot_left = input.int(5, "Pivot Left Bars", minval=1, maxval=20, group="Support & Resistance")
+pivot_right = input.int(5, "Pivot Right Bars", minval=1, maxval=20, group="Support & Resistance")
+sr_tolerance_pct = input.float(0.003, "S&R Zone Tolerance (%)", minval=0.0001, maxval=0.01, step=0.0001, group="Support & Resistance")
+n_div_lookback = input.int(12, "Divergence Lookback Bars", minval=4, maxval=50, group="Support & Resistance")
+
+// 4. Risk Management - CONSERVATIVE SETTINGS FOR $29 CAPITAL
+atr_period = input.int(14, "ATR Period", minval=5, maxval=50, group="Risk Management")
+atr_sl_multiplier = input.float(1.5, "ATR SL Multiplier (ATR_SL_Multiplier)", minval=0.5, maxval=3.0, step=0.1, group="Risk Management")
+rr_target = input.float(2.0, "Risk Reward Target (RR_Target)", minval=1.0, maxval=5.0, step=0.1, group="Risk Management")
+risk_per_trade = input.float(0.02, "Risk Per Trade (%)", minval=0.001, maxval=0.05, step=0.001, group="Risk Management")  // 2% max for small capital
+min_sl_pips = input.float(10, "Minimum SL (pips)", minval=5, maxval=50, step=0.1, group="Risk Management")
+
+// 5. Confidence Scoring Weights (Optimized based on performance analysis)
+w_trend = input.float(2.0, "Weight - Trend Alignment", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+w_mtf = input.float(1.8, "Weight - MTF Alignment", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+w_sr = input.float(1.5, "Weight - S&R Zone", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+w_candle = input.float(1.2, "Weight - Price Action", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+w_rsi = input.float(1.0, "Weight - RSI Signal", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+w_div = input.float(1.5, "Weight - Divergence", minval=0, maxval=5, step=0.1, group="Confidence Weights")
+
+// SOLUSDT-specific confidence weights (optimized for SOL volatility)
+sol_w_trend = input.float(1.8, "SOL Weight - Trend Alignment", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_w_mtf = input.float(1.2, "SOL Weight - MTF Alignment", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_w_sr = input.float(1.0, "SOL Weight - S&R Zone", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_w_candle = input.float(1.5, "SOL Weight - Price Action", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_w_rsi = input.float(1.3, "SOL Weight - RSI Signal", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_w_div = input.float(1.0, "SOL Weight - Divergence", minval=0, maxval=5, step=0.1, group="SOLUSDT Settings")
+sol_min_confidence_input = input.float(0.40, "SOL Minimum Confidence Level", minval=0.1, maxval=1.0, step=0.01, group="SOLUSDT Settings")
+sol_cooldown_bars = input.int(3, "SOL Cooldown Bars After Entry", minval=0, maxval=20, group="SOLUSDT Settings")
+sol_rsi_long_threshold = input.int(45, "SOL RSI Long Threshold", minval=30, maxval=60, group="SOLUSDT Settings")
+sol_rsi_short_threshold = input.int(55, "SOL RSI Short Threshold", minval=40, maxval=70, group="SOLUSDT Settings")
+
+// 6. Execution Settings - OPTIMIZED FOR ETHUSDT FREQUENCY (Based on Research)
+min_confidence = input.float(0.28, "Minimum Confidence Level", minval=0.1, maxval=1.0, step=0.01, group="Execution")  // Research: 0.25-0.30 optimal
+cooldown_bars = input.int(2, "Cooldown Bars After Entry", minval=0, maxval=50, group="Execution")  // Research: 2-3 bars for ETHUSDT
+use_risk_sizing = input.bool(true, "Use Risk-Based Position Sizing", group="Execution")
+allow_long = input.bool(true, "Allow Long Trades", group="Execution")
+allow_short = input.bool(true, "Allow Short Trades", group="Execution")
+use_trailing_stop = input.bool(true, "Use Trailing Stop", group="Execution")
+trailing_stop_pct = input.float(1.5, "Trailing Stop %", minval=0.5, maxval=5.0, step=0.1, group="Execution")
+
+// 7. Display Settings
+show_ema = input.bool(true, "Show EMA Lines", group="Display")
+show_sr_zones = input.bool(true, "Show S&R Zones", group="Display")
+show_signals = input.bool(true, "Show Entry Signals", group="Display")
+show_debug = input.bool(false, "Show Debug Info", group="Display")
+
+// =====================
+// === CORE INDICATORS
+// =====================
+
+// Moving Averages
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+
+// Higher Timeframe EMA
+[close_htf, ema_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period)])
+
+// RSI
+rsi = ta.rsi(close, rsi_period)
+rsi_prev = ta.rsi(close[1], rsi_period)
+
+// ATR for volatility
+atr = ta.atr(atr_period)
+
+// BOLLINGER BANDS (Research Recommendation - Key for ETHUSDT)
+bb_length = input.int(20, "Bollinger Bands Length", minval=5, maxval=50, group="Bollinger Bands")
+bb_mult = input.float(2.0, "Bollinger Bands Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Bollinger Bands")
+bb_basis = ta.sma(close, bb_length)
+bb_dev = bb_mult * ta.stdev(close, bb_length)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+
+// Bollinger Bands Signals
+bb_squeeze = (bb_upper - bb_lower) < ta.sma(bb_upper - bb_lower, 20) * 0.8  // Low volatility
+bb_expansion = (bb_upper - bb_lower) > ta.sma(bb_upper - bb_lower, 20) * 1.2  // High volatility
+bb_bullish = close > bb_basis and close[1] <= bb_basis  // Price crossing above middle line
+bb_bearish = close < bb_basis and close[1] >= bb_basis  // Price crossing below middle line
+bb_oversold = close <= bb_lower  // Price at lower band
+bb_overbought = close >= bb_upper  // Price at upper band
+
+// =====================
+// === SUPPORT & RESISTANCE DETECTION
+// =====================
+
+// Pivot High/Low Detection
+pivot_high = ta.pivothigh(high, pivot_left, pivot_right)
+pivot_low = ta.pivotlow(low, pivot_left, pivot_right)
+
+// Store recent S&R levels
+var float[] resistance_levels = array.new_float()
+var float[] support_levels = array.new_float()
+
+// Update S&R levels when new pivots are found
+if not na(pivot_high)
+    if array.size(resistance_levels) >= 5
+        array.shift(resistance_levels)
+    array.push(resistance_levels, pivot_high)
+
+if not na(pivot_low)
+    if array.size(support_levels) >= 5
+        array.shift(support_levels)
+    array.push(support_levels, pivot_low)
+
+// Find nearest S&R levels
+get_nearest_resistance() =>
+    float nearest = na
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            level = array.get(resistance_levels, i)
+            if level > close and (na(nearest) or level < nearest)
+                nearest := level
+    nearest
+
+get_nearest_support() =>
+    float nearest = na
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            level = array.get(support_levels, i)
+            if level < close and (na(nearest) or level > nearest)
+                nearest := level
+    nearest
+
+nearest_resistance = get_nearest_resistance()
+nearest_support = get_nearest_support()
+
+// Check if price is at S&R zone
+is_at_support = not na(nearest_support) and close <= (nearest_support * (1 + sr_tolerance_pct)) and close >= (nearest_support * (1 - sr_tolerance_pct))
+is_at_resistance = not na(nearest_resistance) and close >= (nearest_resistance * (1 - sr_tolerance_pct)) and close <= (nearest_resistance * (1 + sr_tolerance_pct))
+
+// =====================
+// === PRICE ACTION PATTERNS
+// =====================
+
+// Candlestick body and wick calculations
+body_size = math.abs(close - open)
+upper_wick = high - math.max(close, open)
+lower_wick = math.min(close, open) - low
+total_range = high - low
+
+// Doji Pattern
+is_doji = body_size <= (total_range * 0.1) and total_range > 0
+
+// Pin Bar (Hammer/Shooting Star)
+is_hammer = (close > open) and (lower_wick >= body_size * 2) and (upper_wick <= body_size * 0.5)
+is_shooting_star = (close < open) and (upper_wick >= body_size * 2) and (lower_wick <= body_size * 0.5)
+
+// Inside Bar
+is_inside_bar = (high < high[1]) and (low > low[1])
+
+// Engulfing Patterns
+is_bullish_engulfing = (close > open) and (close[1] < open[1]) and (close > open[1]) and (open < close[1])
+is_bearish_engulfing = (close < open) and (close[1] > open[1]) and (close < open[1]) and (open > close[1])
+
+// Price Action Confirmations
+bullish_price_action = is_hammer or is_bullish_engulfing or (is_doji and is_at_support)
+bearish_price_action = is_shooting_star or is_bearish_engulfing or (is_doji and is_at_resistance)
+
+// =====================
+// === DIVERGENCE DETECTION
+// =====================
+
+// Simple divergence detection using lookback method
+bullish_divergence = (low < ta.lowest(low, n_div_lookback)) and (rsi > ta.lowest(rsi, n_div_lookback))
+bearish_divergence = (high > ta.highest(high, n_div_lookback)) and (rsi < ta.highest(rsi, n_div_lookback))
+
+// =====================
+// === TREND ANALYSIS
+// =====================
+
+// Local trend (current timeframe)
+is_uptrend = close > ema_fast and ema_fast > ema_slow
+is_downtrend = close < ema_fast and ema_fast < ema_slow
+
+// Higher timeframe trend alignment
+htf_uptrend = close_htf > ema_htf
+htf_downtrend = close_htf < ema_htf
+
+// Trend alignment
+trend_aligned_bull = is_uptrend and htf_uptrend
+trend_aligned_bear = is_downtrend and htf_downtrend
+
+// =====================
+// === RSI MOMENTUM SIGNALS
+// =====================
+
+// Enhanced RSI Momentum Signals (More selective)
+rsi_bullish = (rsi < rsi_oversold and rsi > rsi_prev + 2) or (rsi < 35 and rsi > rsi_prev + 3 and close > ema_fast)
+rsi_bearish = (rsi > rsi_overbought and rsi < rsi_prev - 2) or (rsi > 65 and rsi < rsi_prev - 3 and close < ema_fast)
+
+// Additional confirmation filters (VERY RELAXED FOR TESTING)
+volume_confirmation = volume > ta.sma(volume, 20) * 0.8  // Very relaxed volume filter
+atr_filter = atr > ta.sma(atr, 14) * 0.3  // Very relaxed ATR filter
+
+// =====================
+// === ULTIMATE CONFIDENCE SCORING SYSTEM
+// =====================
+
+// Advanced Technical Indicators
+// 1. Multi-Oscillator Suite
+stoch_k = ta.stoch(close, high, low, 14)
+stoch_d = ta.sma(stoch_k, 3)
+[macd_line, signal_line, macd_histogram] = ta.macd(close, 12, 26, 9)
+williams_r = ta.wpr(14)
+rsi_momentum = ta.rsi(ta.change(close), 9)
+
+// 2. Volume & VWAP Analysis
+vwap = ta.vwap(hlc3)
+volume_sma = ta.sma(volume, 20)
+volume_ratio = volume / volume_sma
+is_high_volume = volume_ratio > 1.5
+is_low_volume = volume_ratio < 0.7
+
+// 3. Market Structure & Fibonacci
+swing_high = ta.highest(high, 20)
+swing_low = ta.lowest(low, 20)
+fib_618 = swing_low + (swing_high - swing_low) * 0.618
+fib_382 = swing_low + (swing_high - swing_low) * 0.382
+fib_236 = swing_low + (swing_high - swing_low) * 0.236
+
+// Price position relative to key Fibonacci levels
+at_fib_618 = math.abs(close - fib_618) / close < 0.005
+at_fib_382 = math.abs(close - fib_382) / close < 0.005
+at_fib_236 = math.abs(close - fib_236) / close < 0.005
+
+// 4. Advanced Divergence Detection
+rsi_higher_low = rsi > rsi[1] and low < low[1]
+rsi_lower_high = rsi < rsi[1] and high > high[1]
+macd_bull_div = macd_line > macd_line[1] and low < low[1]
+macd_bear_div = macd_line < macd_line[1] and high > high[1]
+
+// Enhanced divergence signals
+enhanced_bull_div = (rsi_higher_low or macd_bull_div) and bullish_divergence
+enhanced_bear_div = (rsi_lower_high or macd_bear_div) and bearish_divergence
+
+// =====================
+// === ULTIMATE SCORING MODULES
+// =====================
+
+// Module 1: Trend Analysis (Weight: 25%)
+trend_score_bull = 0.0
+trend_score_bear = 0.0
+
+if trend_aligned_bull
+    trend_score_bull += 0.4
+if htf_uptrend
+    trend_score_bull += 0.3
+if close > vwap
+    trend_score_bull += 0.3
+
+if trend_aligned_bear
+    trend_score_bear += 0.4
+if htf_downtrend
+    trend_score_bear += 0.3
+if close < vwap
+    trend_score_bear += 0.3
+
+// Module 2: Momentum Confluence (Weight: 30%)
+momentum_score_bull = 0.0
+momentum_score_bear = 0.0
+
+// RSI signals
+if rsi_bullish or (rsi < 40 and rsi > rsi[1])
+    momentum_score_bull += 0.25
+if rsi_bearish or (rsi > 60 and rsi < rsi[1])
+    momentum_score_bear += 0.25
+
+// Stochastic signals
+if stoch_k < 20 and stoch_k > stoch_d
+    momentum_score_bull += 0.25
+if stoch_k > 80 and stoch_k < stoch_d
+    momentum_score_bear += 0.25
+
+// MACD signals
+if macd_line > signal_line and macd_histogram > macd_histogram[1]
+    momentum_score_bull += 0.25
+if macd_line < signal_line and macd_histogram < macd_histogram[1]
+    momentum_score_bear += 0.25
+
+// Williams %R signals
+if williams_r < -80 and williams_r > williams_r[1]
+    momentum_score_bull += 0.25
+if williams_r > -20 and williams_r < williams_r[1]
+    momentum_score_bear += 0.25
+
+// Module 3: Market Structure (Weight: 20%)
+structure_score_bull = 0.0
+structure_score_bear = 0.0
+
+if is_at_support or at_fib_618 or at_fib_382
+    structure_score_bull += 0.5
+if bullish_price_action
+    structure_score_bull += 0.5
+
+if is_at_resistance or at_fib_618 or at_fib_382
+    structure_score_bear += 0.5
+if bearish_price_action
+    structure_score_bear += 0.5
+
+// Module 4: Volume Analysis (Weight: 15%)
+volume_score_bull = 0.0
+volume_score_bear = 0.0
+
+if is_high_volume and close > open
+    volume_score_bull += 0.6
+if close > vwap and volume_ratio > 1.2
+    volume_score_bull += 0.4
+
+if is_high_volume and close < open
+    volume_score_bear += 0.6
+if close < vwap and volume_ratio > 1.2
+    volume_score_bear += 0.4
+
+// Module 5: Enhanced Divergence (Weight: 10%)
+divergence_score_bull = enhanced_bull_div ? 1.0 : 0.0
+divergence_score_bear = enhanced_bear_div ? 1.0 : 0.0
+
+// =====================
+// === FINAL CONFIDENCE CALCULATION
+// =====================
+
+// Weighted scoring with normalized weights
+w_trend_final = 0.25
+w_momentum_final = 0.30
+w_structure_final = 0.20
+w_volume_final = 0.15
+w_divergence_final = 0.10
+
+// Calculate ultimate confidence scores
+ultimate_bull_confidence = (trend_score_bull * w_trend_final) + 
+                          (momentum_score_bull * w_momentum_final) + 
+                          (structure_score_bull * w_structure_final) + 
+                          (volume_score_bull * w_volume_final) + 
+                          (divergence_score_bull * w_divergence_final)
+
+ultimate_bear_confidence = (trend_score_bear * w_trend_final) + 
+                          (momentum_score_bear * w_momentum_final) + 
+                          (structure_score_bear * w_structure_final) + 
+                          (volume_score_bear * w_volume_final) + 
+                          (divergence_score_bear * w_divergence_final)
+
+// Apply symbol-specific adjustments
+is_sol_symbol = str.contains(syminfo.ticker, "SOL")
+is_eth_symbol = str.contains(syminfo.ticker, "ETH")
+
+// ETH-specific adjustments (based on your ETHUSDT case)
+if is_eth_symbol
+    // ETH requires higher confluence due to volatility
+    ultimate_bull_confidence *= 0.9  // Slightly more conservative
+    ultimate_bear_confidence *= 0.9
+    
+    // Additional ETH momentum filter
+    if rsi > 70 or stoch_k > 85
+        ultimate_bull_confidence *= 0.7  // Reduce bullish confidence in overbought
+    if rsi < 30 or stoch_k < 15
+        ultimate_bear_confidence *= 0.7  // Reduce bearish confidence in oversold
+
+// SOL-specific adjustments
+if is_sol_symbol
+    ultimate_bull_confidence *= 1.1  // SOL momentum boost
+    ultimate_bear_confidence *= 1.1
+
+// Final confidence scores (0-1 scale)
+confidence_bull = math.min(1.0, ultimate_bull_confidence)
+confidence_bear = math.min(1.0, ultimate_bear_confidence)
+
+// =====================
+// === SIGNAL QUALITY FILTERS (ANTI-SPAM)
+// =====================
+
+// Track confidence changes to prevent minor fluctuation alerts
+var float prev_confidence_bull = na
+var float prev_confidence_bear = na
+var float confidence_change_threshold = 0.05  // 5% minimum change required
+
+// Significant confidence change detection
+significant_bull_change = na(prev_confidence_bull) or math.abs(confidence_bull - prev_confidence_bull) >= confidence_change_threshold
+significant_bear_change = na(prev_confidence_bear) or math.abs(confidence_bear - prev_confidence_bear) >= confidence_change_threshold
+
+// Update previous confidence values on bar close
+if barstate.isconfirmed
+    prev_confidence_bull := confidence_bull
+    prev_confidence_bear := confidence_bear
+
+// =====================
+// === ENTRY LOGIC & RISK MANAGEMENT
+// =====================
+
+// Track last entry bars for cooldown
+var int last_long_bar = na
+var int last_short_bar = na
+
+// Calculate Stop Loss and Take Profit levels
+calc_sl_tp_long() =>
+    // Use multiple SL methods and take the most conservative
+    atr_sl = close - (atr * atr_sl_multiplier)
+    sr_sl = na(nearest_support) ? atr_sl : nearest_support - (atr * 0.2)
+    swing_sl = ta.lowest(low, 10) - (atr * 0.1)
+    
+    sl_price = math.max(atr_sl, math.max(sr_sl, swing_sl))
+    sl_distance = close - sl_price
+    
+    // Dynamic TP based on market conditions
+    base_tp = close + (sl_distance * rr_target)
+    resistance_tp = na(nearest_resistance) ? base_tp : math.min(base_tp, nearest_resistance - (atr * 0.1))
+    tp_price = resistance_tp
+    
+    [sl_price, tp_price, sl_distance]
+
+calc_sl_tp_short() =>
+    // Use multiple SL methods and take the most conservative
+    atr_sl = close + (atr * atr_sl_multiplier)
+    sr_sl = na(nearest_resistance) ? atr_sl : nearest_resistance + (atr * 0.2)
+    swing_sl = ta.highest(high, 10) + (atr * 0.1)
+    
+    sl_price = math.min(atr_sl, math.min(sr_sl, swing_sl))
+    sl_distance = sl_price - close
+    
+    // Dynamic TP based on market conditions
+    base_tp = close - (sl_distance * rr_target)
+    support_tp = na(nearest_support) ? base_tp : math.max(base_tp, nearest_support + (atr * 0.1))
+    tp_price = support_tp
+    
+    [sl_price, tp_price, sl_distance]
+
+// Entry conditions
+base_can_enter_long = allow_long and confidence_bull >= min_confidence and 
+                 volume_confirmation and atr_filter and
+                 (na(last_long_bar) or (bar_index - last_long_bar) > cooldown_bars) and
+                 not (rsi > 85)  // Relaxed overbought filter
+
+base_can_enter_short = allow_short and confidence_bear >= min_confidence and 
+                  volume_confirmation and atr_filter and
+                  (na(last_short_bar) or (bar_index - last_short_bar) > cooldown_bars) and
+                  not (rsi < 15)  // Relaxed oversold filter
+
+// Implement signal priority logic to prevent dual signals
+// If both signals are valid, take the one with higher confidence
+can_enter_long = base_can_enter_long and (not base_can_enter_short or confidence_bull > confidence_bear)
+can_enter_short = base_can_enter_short and (not base_can_enter_long or confidence_bear > confidence_bull)
+
+// Calculate SL/TP values once per bar for consistency
+[sl_long, tp_long, sl_dist_long] = calc_sl_tp_long()
+[sl_short, tp_short, sl_dist_short] = calc_sl_tp_short()
+
+// Alert messages now handled by alertcondition() at the end of script
+
+// Execute trades with enhanced exit strategy
+if can_enter_long
+    if sl_dist_long >= (min_sl_pips * syminfo.mintick)
+        if use_risk_sizing
+            qty_percent = math.min(95.0, (risk_per_trade * 100.0) * (close / sl_dist_long))
+            strategy.entry("Long", strategy.long, qty=qty_percent, comment="Sniper Long: " + str.tostring(confidence_bull, "#.##"))
+        else
+            strategy.entry("Long", strategy.long, comment="Sniper Long: " + str.tostring(confidence_bull, "#.##"))
+        
+        // Enhanced exit strategy
+        if use_trailing_stop
+            trail_points = math.round((close * trailing_stop_pct / 100) / syminfo.mintick)
+            strategy.exit("Exit Long", "Long", stop=sl_long, limit=tp_long, trail_points=trail_points, trail_offset=trail_points)
+        else
+            strategy.exit("Exit Long", "Long", stop=sl_long, limit=tp_long)
+        last_long_bar := bar_index
+
+if can_enter_short
+    if sl_dist_short >= (min_sl_pips * syminfo.mintick)
+        if use_risk_sizing
+            qty_percent = math.min(95.0, (risk_per_trade * 100.0) * (close / sl_dist_short))
+            strategy.entry("Short", strategy.short, qty=qty_percent, comment="Sniper Short: " + str.tostring(confidence_bear, "#.##"))
+        else
+            strategy.entry("Short", strategy.short, comment="Sniper Short: " + str.tostring(confidence_bear, "#.##"))
+        
+        // Enhanced exit strategy
+        if use_trailing_stop
+            trail_points = math.round((close * trailing_stop_pct / 100) / syminfo.mintick)
+            strategy.exit("Exit Short", "Short", stop=sl_short, limit=tp_short, trail_points=trail_points, trail_offset=trail_points)
+        else
+            strategy.exit("Exit Short", "Short", stop=sl_short, limit=tp_short)
+        last_short_bar := bar_index
+
+// Partial profit taking for better risk management
+var float long_entry_price = na
+var float short_entry_price = na
+
+if strategy.position_size > 0 and na(long_entry_price)
+    long_entry_price := strategy.position_avg_price
+
+if strategy.position_size < 0 and na(short_entry_price)
+    short_entry_price := strategy.position_avg_price
+
+// Take partial profits at 1:1 RR (NO ALERTS)
+if strategy.position_size > 0 and not na(long_entry_price)
+    profit_target_1 = long_entry_price + (long_entry_price - strategy.position_avg_price) * 1.0
+    if close >= profit_target_1
+        strategy.close("Long", qty_percent=30, comment="Partial TP Long 1:1", alert_message="")
+
+if strategy.position_size < 0 and not na(short_entry_price)
+    profit_target_1 = short_entry_price - (strategy.position_avg_price - short_entry_price) * 1.0
+    if close <= profit_target_1
+        strategy.close("Short", qty_percent=30, comment="Partial TP Short 1:1", alert_message="")
+
+// Reset entry prices when position is closed
+if strategy.position_size == 0
+    long_entry_price := na
+    short_entry_price := na
+
+// =====================
+// === DEBUG VISUALIZATION (TROUBLESHOOTING)
+// =====================
+
+// Debug table for real-time monitoring
+if show_debug
+    var table debug_table = table.new(position.top_right, 2, 15, bgcolor=color.white, border_width=1)
+    
+    if barstate.islast
+        // Clear table
+        table.clear(debug_table, 0, 0)
+        
+        // Header
+        table.cell(debug_table, 0, 0, "SNIPER DEBUG", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+        table.cell(debug_table, 1, 0, "VALUES", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+        
+        // Confidence Scores
+        table.cell(debug_table, 0, 1, "Bull Confidence", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 1, str.tostring(confidence_bull, "#.###"), text_color=confidence_bull >= min_confidence ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 2, "Bear Confidence", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 2, str.tostring(confidence_bear, "#.###"), text_color=confidence_bear >= min_confidence ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 3, "Min Required", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 3, str.tostring(min_confidence, "#.##"), text_color=color.blue, text_size=size.tiny)
+        
+        // Filter Status
+        table.cell(debug_table, 0, 4, "Volume Filter", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 4, volume_confirmation ? "✓ PASS" : "✗ FAIL", text_color=volume_confirmation ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 5, "ATR Filter", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 5, atr_filter ? "✓ PASS" : "✗ FAIL", text_color=atr_filter ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 6, "Volume Ratio", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 6, str.tostring(volume_ratio, "#.##"), text_color=volume_ratio > 1.5 ? color.green : color.orange, text_size=size.tiny)
+        
+        // Entry Readiness
+        table.cell(debug_table, 0, 7, "Can Enter Long", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 7, can_enter_long ? "✓ YES" : "✗ NO", text_color=can_enter_long ? color.green : color.red, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 8, "Can Enter Short", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 8, can_enter_short ? "✓ YES" : "✗ NO", text_color=can_enter_short ? color.green : color.red, text_size=size.tiny)
+        
+        // Module Scores
+        table.cell(debug_table, 0, 9, "Trend Score", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 9, str.tostring(trend_score_bull, "#.##") + "/" + str.tostring(trend_score_bear, "#.##"), text_color=color.blue, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 10, "Momentum Score", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 10, str.tostring(momentum_score_bull, "#.##") + "/" + str.tostring(momentum_score_bear, "#.##"), text_color=color.blue, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 11, "Structure Score", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 11, str.tostring(structure_score_bull, "#.##") + "/" + str.tostring(structure_score_bear, "#.##"), text_color=color.blue, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 12, "Volume Score", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 12, str.tostring(volume_score_bull, "#.##") + "/" + str.tostring(volume_score_bear, "#.##"), text_color=color.blue, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 13, "RSI Value", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 13, str.tostring(rsi, "#.#"), text_color=rsi > 70 ? color.red : rsi < 30 ? color.green : color.gray, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 14, "Current Bar", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 14, str.tostring(bar_index), text_color=color.gray, text_size=size.tiny)
+
+// Plot confidence scores as lines for visual tracking
+plot(confidence_bull, title="Bull Confidence", color=color.new(color.green, 30), linewidth=2)
+plot(confidence_bear, title="Bear Confidence", color=color.new(color.red, 30), linewidth=2)
+plot(min_confidence, title="Min Confidence Threshold", color=color.new(color.blue, 50), linewidth=1, style=plot.style_line)
+
+// Plot filter status as background colors
+bgcolor(volume_confirmation ? color.new(color.green, 95) : color.new(color.red, 95), title="Volume Filter Status")
+
+// =====================
+// === PLOTTING & VISUALIZATION
+// =====================
+
+// Plot EMAs
+plot(show_ema ? ema_fast : na, "EMA Fast", color=color.blue, linewidth=2)
+plot(show_ema ? ema_slow : na, "EMA Slow", color=color.red, linewidth=2)
+plot(show_ema ? ema_htf : na, "EMA HTF", color=color.purple, linewidth=2, style=plot.style_circles)
+
+// Plot VWAP (New Ultimate Indicator)
+plot(vwap, "VWAP", color=color.new(color.orange, 30), linewidth=3, style=plot.style_line)
+
+// Plot Fibonacci Levels (New Ultimate Indicators)
+plot(show_sr_zones ? fib_618 : na, "Fib 61.8%", color=color.new(color.yellow, 50), linewidth=1, style=plot.style_stepline)
+plot(show_sr_zones ? fib_382 : na, "Fib 38.2%", color=color.new(color.aqua, 50), linewidth=1, style=plot.style_stepline)
+plot(show_sr_zones ? fib_236 : na, "Fib 23.6%", color=color.new(color.lime, 70), linewidth=1, style=plot.style_stepline)
+
+// Enhanced S&R zones with Fibonacci confluence
+if show_sr_zones and not na(nearest_support)
+    support_top = nearest_support * (1 + sr_tolerance_pct)
+    support_bottom = nearest_support * (1 - sr_tolerance_pct)
+    support_color = (at_fib_618 or at_fib_382) ? color.new(color.green, 50) : color.new(color.green, 80)
+    box.new(bar_index - 1, support_top, bar_index, support_bottom, border_color=support_color, bgcolor=support_color)
+
+if show_sr_zones and not na(nearest_resistance)
+    resistance_top = nearest_resistance * (1 + sr_tolerance_pct)
+    resistance_bottom = nearest_resistance * (1 - sr_tolerance_pct)
+    resistance_color = (at_fib_618 or at_fib_382) ? color.new(color.red, 50) : color.new(color.red, 80)
+    box.new(bar_index - 1, resistance_top, bar_index, resistance_bottom, border_color=resistance_color, bgcolor=resistance_color)
+
+// Enhanced entry signals with confidence levels
+signal_color_long = confidence_bull > 0.8 ? color.new(color.green, 0) : confidence_bull > 0.7 ? color.new(color.green, 30) : color.new(color.green, 60)
+signal_color_short = confidence_bear > 0.8 ? color.new(color.red, 0) : confidence_bear > 0.7 ? color.new(color.red, 30) : color.new(color.red, 60)
+
+plotshape(show_signals and can_enter_long ? low : na, "Long Signal", 
+          shape.triangleup, location.belowbar, signal_color_long, size=size.normal)
+plotshape(show_signals and can_enter_short ? high : na, "Short Signal", 
+          shape.triangledown, location.abovebar, signal_color_short, size=size.normal)
+
+// Plot Ultimate Confidence Levels
+confidence_line_bull = confidence_bull > min_confidence ? confidence_bull : na
+confidence_line_bear = confidence_bear > min_confidence ? confidence_bear : na
+
+// Volume Analysis Visualization
+volume_color = is_high_volume ? color.new(color.yellow, 70) : is_low_volume ? color.new(color.gray, 80) : color.new(color.blue, 80)
+plotchar(is_high_volume and close > vwap, "High Vol Bull", "⬆", location.belowbar, color.new(color.lime, 30), size=size.tiny)
+plotchar(is_high_volume and close < vwap, "High Vol Bear", "⬇", location.abovebar, color.new(color.red, 30), size=size.tiny)
+
+// Enhanced Price Action Patterns with Multi-Oscillator Confluence
+pa_bull_confluence = bullish_price_action and (stoch_k < 30 or williams_r < -70 or macd_line > signal_line)
+pa_bear_confluence = bearish_price_action and (stoch_k > 70 or williams_r > -30 or macd_line < signal_line)
+
+plotchar(pa_bull_confluence, "Ultimate Bull PA", "🎯", location.belowbar, color.new(color.lime, 0), size=size.small)
+plotchar(pa_bear_confluence, "Ultimate Bear PA", "🎯", location.abovebar, color.new(color.red, 0), size=size.small)
+
+// Divergence Signals (Enhanced)
+plotchar(enhanced_bull_div, "Enhanced Bull Div", "D", location.belowbar, color.new(color.aqua, 0), size=size.small)
+plotchar(enhanced_bear_div, "Enhanced Bear Div", "D", location.abovebar, color.new(color.fuchsia, 0), size=size.small)
+
+// Debug information with enhanced performance metrics
+if show_debug and barstate.islast
+    // Calculate recent performance metrics
+    total_trades = strategy.closedtrades
+    winning_trades = 0
+    total_pnl = 0.0
+    
+    if total_trades > 0
+        for i = 0 to math.min(total_trades - 1, 99)  // Last 100 trades
+            trade_pnl = strategy.closedtrades.profit(i)
+            total_pnl += trade_pnl
+            if trade_pnl > 0
+                winning_trades += 1
+    
+    win_rate = total_trades > 0 ? (winning_trades / math.min(total_trades, 100)) * 100 : 0
+    avg_pnl = total_trades > 0 ? total_pnl / math.min(total_trades, 100) : 0
+    
+    debug_text = "=== ULTIMATE SNIPER PERFORMANCE ===\n" +
+                 "Recent Win Rate: " + str.tostring(win_rate, "#.#") + "%\n" +
+                 "Avg PnL (last 100): $" + str.tostring(avg_pnl, "#.##") + "\n" +
+                 "Total Trades: " + str.tostring(total_trades) + "\n" +
+                 "🎯 Ultimate Bull Conf: " + str.tostring(confidence_bull, "#.###") + " (Min: " + str.tostring(min_confidence, "#.##") + ")\n" +
+                 "🎯 Ultimate Bear Conf: " + str.tostring(confidence_bear, "#.###") + " (Min: " + str.tostring(min_confidence, "#.##") + ")\n" +
+                 "📊 Multi-Oscillator Status:\n" +
+                 "  RSI: " + str.tostring(rsi, "#.#") + " | Stoch: " + str.tostring(stoch_k, "#.#") + " | MACD: " + str.tostring(macd_line, "#.###") + "\n" +
+                 "  Williams %R: " + str.tostring(williams_r, "#.#") + " | RSI Mom: " + str.tostring(rsi_momentum, "#.#") + "\n" +
+                 "📈 Volume Analysis: Ratio=" + str.tostring(volume_ratio, "#.##") + " | High Vol=" + str.tostring(is_high_volume) + "\n" +
+                 "🎯 VWAP Position: " + (close > vwap ? "ABOVE" : "BELOW") + " (Price: " + str.tostring(close, "#.##") + " | VWAP: " + str.tostring(vwap, "#.##") + ")\n" +
+                 "📐 Fibonacci Levels: 61.8%=" + str.tostring(fib_618, "#.##") + " | 38.2%=" + str.tostring(fib_382, "#.##") + "\n" +
+                 "🔄 Trend Analysis: Local=" + (is_uptrend ? "UP" : is_downtrend ? "DOWN" : "SIDE") + " | HTF=" + (htf_uptrend ? "UP" : htf_downtrend ? "DOWN" : "SIDE") + "\n" +
+                 "🎯 S&R Status: Support=" + str.tostring(is_at_support) + " | Resistance=" + str.tostring(is_at_resistance) + "\n" +
+                 "⚡ Enhanced Divergence: Bull=" + str.tostring(enhanced_bull_div) + " | Bear=" + str.tostring(enhanced_bear_div) + "\n" +
+                 "🚀 Entry Readiness: Long=" + str.tostring(can_enter_long) + " | Short=" + str.tostring(can_enter_short)
+    
+    label.new(bar_index, high, debug_text,
+              style=label.style_label_left, color=color.new(color.gray, 20), textcolor=color.white, size=size.small)
+
+// Performance-based dynamic adjustments
+var float dynamic_min_confidence = min_confidence
+var int performance_check_bars = 0
+
+// Check performance every 100 bars and adjust if needed
+if barstate.islast and performance_check_bars % 100 == 0
+    recent_trades = math.min(strategy.closedtrades, 20)  // Last 20 trades
+    recent_wins = 0
+    
+    if recent_trades > 0
+        for i = 0 to recent_trades - 1
+            if strategy.closedtrades.profit(i) > 0
+                recent_wins += 1
+        
+        recent_win_rate = recent_wins / recent_trades
+        
+        // Adjust confidence threshold based on performance
+        if recent_win_rate < 0.4  // Less than 40% win rate
+            dynamic_min_confidence := math.min(dynamic_min_confidence + 0.05, 0.85)
+        else if recent_win_rate > 0.6  // More than 60% win rate
+            dynamic_min_confidence := math.max(dynamic_min_confidence - 0.02, min_confidence)
+
+performance_check_bars += 1
+
+// =====================
+// === SMART ALERT SYSTEM (SINGLE SIGNAL PRIORITY)
+// =====================
+
+// Track last alert bar to prevent spam (increased cooldown)
+var int last_alert_bar = na
+var string last_alert_type = na
+
+// Minimum bars between alerts (prevent TradingView "frequent triggers" pause)
+alert_cooldown_bars = 15  // Increased from 5 to 15 bars
+
+// Basic alert eligibility (with proper cooldown)
+alert_cooldown_ok = na(last_alert_bar) or (bar_index - last_alert_bar) >= alert_cooldown_bars
+
+// Calculate which signal has higher confidence
+bull_signal_strength = can_enter_long ? confidence_bull : 0.0
+bear_signal_strength = can_enter_short ? confidence_bear : 0.0
+
+// Determine the dominant signal (only if above minimum threshold)
+dominant_is_bull = bull_signal_strength > bear_signal_strength and bull_signal_strength >= dynamic_min_confidence
+dominant_is_bear = bear_signal_strength > bull_signal_strength and bear_signal_strength >= dynamic_min_confidence
+
+// Final alert conditions - ONLY ONE CAN BE TRUE
+long_alert_condition = dominant_is_bull and alert_cooldown_ok and can_enter_long
+short_alert_condition = dominant_is_bear and alert_cooldown_ok and can_enter_short
+
+// Get actual confidence values for alerts
+alert_confidence_bull = math.round(confidence_bull * 100) / 100  // Round to 2 decimals
+alert_confidence_bear = math.round(confidence_bear * 100) / 100  // Round to 2 decimals
+
+// =====================
+// === DEBUG PLOTS FOR ALERT ANALYSIS
+// =====================
+
+// Plot confidence values for alert placeholders (plot_0, plot_1, plot_2, plot_3)
+plot(alert_confidence_bull, "Alert Bull Confidence", color=color.new(color.green, 100), display=display.none)  // plot_0
+plot(bull_signal_strength, "Alert Bull Signal Strength", color=color.new(color.lime, 100), display=display.none)  // plot_1
+plot(alert_confidence_bear, "Alert Bear Confidence", color=color.new(color.red, 100), display=display.none)  // plot_2
+plot(bear_signal_strength, "Alert Bear Signal Strength", color=color.new(color.orange, 100), display=display.none)  // plot_3
+
+// Plot confidence levels for debugging (visible)
+plot(confidence_bull * 100, "Bull Confidence %", color=color.green, linewidth=2)
+plot(confidence_bear * 100, "Bear Confidence %", color=color.red, linewidth=2)
+plot(dynamic_min_confidence * 100, "Dynamic Min Confidence %", color=color.yellow, linewidth=1, style=plot.style_line)
+
+// Plot signal strength comparison (visible)
+plot(bull_signal_strength * 100, "Bull Signal Strength %", color=color.lime, linewidth=1, style=plot.style_stepline)
+plot(bear_signal_strength * 100, "Bear Signal Strength %", color=color.orange, linewidth=1, style=plot.style_stepline)
+
+// Plot final alert conditions (these are the actual alerts)
+plotshape(long_alert_condition, title="🎯 LONG ALERT SENT", location=location.belowbar, color=color.lime, style=shape.triangleup, size=size.normal)
+plotshape(short_alert_condition, title="🎯 SHORT ALERT SENT", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.normal)
+
+// Plot entry conditions for comparison (smaller shapes)
+plotshape(can_enter_long and not long_alert_condition, title="Long Ready (No Alert)", location=location.belowbar, color=color.green, style=shape.circle, size=size.tiny)
+plotshape(can_enter_short and not short_alert_condition, title="Short Ready (No Alert)", location=location.abovebar, color=color.orange, style=shape.circle, size=size.tiny)
+
+// Update alert tracking
+if long_alert_condition
+    last_alert_bar := bar_index
+    last_alert_type := "LONG"
+else if short_alert_condition
+    last_alert_bar := bar_index
+    last_alert_type := "SHORT"
+
+// Create alert conditions with exact format requested
+alertcondition(long_alert_condition, title="🎯 Sniper Long Entry", 
+               message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": {{plot_0}}, "timestamp": "{{time}}", "strategy": "Sniper Method", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+alertcondition(short_alert_condition, title="🎯 Sniper Short Entry", 
+               message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "confidence": {{plot_2}}, "timestamp": "{{time}}", "strategy": "Sniper Method", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === END OF METODE SNIPER STRATEGY
+// =====================

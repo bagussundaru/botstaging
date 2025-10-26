@@ -1,0 +1,597 @@
+//@version=5
+strategy("Metode Sniper ENHANCED v2.0 - Capital Preservation First", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=2, initial_capital=500, currency=currency.USD, calc_on_every_tick=false)
+
+// =====================
+// === CRITICAL SAFEGUARDS - NEVER REMOVE
+// =====================
+// These safeguards are LIFE-CRITICAL for capital preservation
+// Removing any of these protections can result in catastrophic losses
+
+// =====================
+// === ENHANCED PARAMETERS (OPTIMIZED FOR ETHUSDT)
+// =====================
+
+// 1. Trend Filter - Enhanced with Market Regime Detection
+trend_period = input.int(20, "EMA Fast Period", minval=5, maxval=200, group="🎯 Trend Analysis")
+trend_period_slow = input.int(60, "EMA Slow Period", minval=20, maxval=200, group="🎯 Trend Analysis")
+trend_htf = input.timeframe("15", "Higher Timeframe (15m for better confirmation)", group="🎯 Trend Analysis")
+
+// 2. Enhanced RSI with Dynamic Thresholds
+rsi_period = input.int(14, "RSI Period", minval=2, maxval=50, group="📊 Momentum")
+rsi_oversold = input.int(25, "RSI Oversold (More Conservative)", minval=10, maxval=35, group="📊 Momentum")
+rsi_overbought = input.int(75, "RSI Overbought (More Conservative)", minval=65, maxval=90, group="📊 Momentum")
+
+// 3. Market Regime Detection Parameters
+regime_lookback = input.int(48, "Market Regime Lookback (Hours)", minval=24, maxval=168, group="🔍 Market Regime")
+volatility_threshold = input.float(0.015, "Volatility Threshold", minval=0.005, maxval=0.030, step=0.001, group="🔍 Market Regime")
+trend_strength_threshold = input.float(0.02, "Trend Strength Threshold", minval=0.005, maxval=0.050, step=0.001, group="🔍 Market Regime")
+
+// 4. Enhanced Anti-Whipsaw Filters
+base_cooldown = input.int(45, "Base Cooldown (Minutes)", minval=30, maxval=120, group="🛡️ Anti-Whipsaw")
+volume_quality_multiplier = input.float(2.0, "Volume Quality Multiplier", minval=1.5, maxval=3.0, step=0.1, group="🛡️ Anti-Whipsaw")
+price_action_threshold = input.float(0.3, "Price Action Threshold (ATR)", minval=0.2, maxval=0.8, step=0.1, group="🛡️ Anti-Whipsaw")
+
+// 5. ETHUSDT-Specific Optimizations
+eth_range_threshold = input.float(80.0, "ETH Range Threshold ($)", minval=50.0, maxval=150.0, step=5.0, group="💎 ETHUSDT Specific")
+eth_confidence_boost = input.float(1.2, "ETH Confidence Boost", minval=1.0, maxval=1.5, step=0.1, group="💎 ETHUSDT Specific")
+eth_bear_penalty = input.float(0.7, "ETH Bear Penalty (Bullish Market)", minval=0.5, maxval=1.0, step=0.1, group="💎 ETHUSDT Specific")
+
+// 6. Dynamic Confidence System
+base_min_confidence = input.float(0.75, "Base Minimum Confidence", minval=0.60, maxval=0.90, step=0.01, group="🎯 Dynamic Confidence")
+confidence_adaptation_rate = input.float(0.05, "Confidence Adaptation Rate", minval=0.01, maxval=0.10, step=0.01, group="🎯 Dynamic Confidence")
+performance_window = input.int(20, "Performance Window (Signals)", minval=10, maxval=50, group="🎯 Dynamic Confidence")
+
+// 7. Risk Management - CAPITAL PRESERVATION FIRST
+atr_period = input.int(14, "ATR Period", minval=5, maxval=50, group="🛡️ Risk Management")
+atr_sl_multiplier = input.float(1.8, "ATR SL Multiplier (Tighter)", minval=1.0, maxval=2.5, step=0.1, group="🛡️ Risk Management")
+rr_target = input.float(1.2, "Risk Reward Target (Closer TP)", minval=1.0, maxval=2.0, step=0.1, group="🛡️ Risk Management")
+risk_per_trade = input.float(0.02, "Risk Per Trade (2% MAX)", minval=0.01, maxval=0.025, step=0.001, group="🛡️ Risk Management")
+max_risk_per_trade = input.float(0.08, "Maximum Risk Cap (8%)", minval=0.05, maxval=0.10, step=0.01, group="🛡️ Risk Management")
+
+// 8. Execution Settings
+allow_long = input.bool(true, "Allow Long Trades", group="⚡ Execution")
+allow_short = input.bool(true, "Allow Short Trades", group="⚡ Execution")
+use_trailing_stop = input.bool(true, "Use Trailing Stop", group="⚡ Execution")
+trailing_stop_pct = input.float(1.0, "Trailing Stop %", minval=0.5, maxval=2.0, step=0.1, group="⚡ Execution")
+
+// 9. Display Settings
+show_ema = input.bool(true, "Show EMA Lines", group="📊 Display")
+show_regime = input.bool(true, "Show Market Regime", group="📊 Display")
+show_signals = input.bool(true, "Show Entry Signals", group="📊 Display")
+show_debug = input.bool(true, "Show Debug Info", group="📊 Display")
+
+// =====================
+// === CORE INDICATORS
+// =====================
+
+// Moving Averages
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period_slow)
+
+// Multi-Timeframe Data
+[close_htf, ema_htf, volume_htf] = request.security(syminfo.tickerid, trend_htf, [close, ta.ema(close, trend_period), volume])
+
+// Enhanced RSI with momentum
+rsi = ta.rsi(close, rsi_period)
+rsi_momentum = ta.change(rsi, 3)
+
+// ATR for volatility measurement
+atr = ta.atr(atr_period)
+atr_normalized = atr / close
+
+// Volume Analysis
+volume_sma = ta.sma(volume, 20)
+volume_ratio = volume / volume_sma
+
+// VWAP for institutional levels
+vwap = ta.vwap(hlc3)
+
+// =====================
+// === MARKET REGIME DETECTION (CRITICAL ENHANCEMENT)
+// =====================
+
+// Calculate market regime indicators
+price_range_48h = ta.highest(high, regime_lookback) - ta.lowest(low, regime_lookback)
+price_range_normalized = price_range_48h / close
+
+// EMA separation for trend strength
+ema_separation = math.abs(ema_fast - ema_slow) / close
+
+// Trend direction consistency
+trend_consistency_bull = 0
+trend_consistency_bear = 0
+for i = 0 to 23  // Last 24 hours
+    if close[i] > ema_fast[i] and ema_fast[i] > ema_slow[i]
+        trend_consistency_bull += 1
+    if close[i] < ema_fast[i] and ema_fast[i] < ema_slow[i]
+        trend_consistency_bear += 1
+
+trend_consistency_bull_pct = trend_consistency_bull / 24
+trend_consistency_bear_pct = trend_consistency_bear / 24
+
+// Market regime classification
+detect_market_regime() =>
+    if ema_separation > trend_strength_threshold and atr_normalized > volatility_threshold
+        if trend_consistency_bull_pct > 0.6
+            "trending_bull"
+        else if trend_consistency_bear_pct > 0.6
+            "trending_bear"
+        else
+            "volatile"
+    else if price_range_normalized < 0.05 and atr_normalized < 0.01
+        "consolidation"
+    else
+        "sideways"
+
+market_regime = detect_market_regime()
+
+// Market regime multipliers for confidence
+regime_confidence_multiplier = switch market_regime
+    "trending_bull" => 1.1
+    "trending_bear" => 1.1
+    "volatile" => 0.8
+    "consolidation" => 0.6
+    "sideways" => 0.7
+    => 1.0
+
+// =====================
+// === ENHANCED VOLUME QUALITY ANALYSIS
+// =====================
+
+// Volume quality assessment (not just quantity)
+volume_quality_score = 0.0
+
+// High volume with price movement
+if volume_ratio > volume_quality_multiplier and math.abs(close - open) > atr * price_action_threshold
+    volume_quality_score += 0.4
+
+// Volume above recent highs
+if volume > ta.highest(volume, 10) * 0.8
+    volume_quality_score += 0.3
+
+// Volume trend alignment
+if volume > volume[1] and volume[1] > volume[2]
+    volume_quality_score += 0.3
+
+volume_quality_confirmed = volume_quality_score >= 0.6
+
+// =====================
+// === DYNAMIC COOLDOWN SYSTEM (ANTI-WHIPSAW)
+// =====================
+
+// Track last signal information
+var int last_signal_bar = na
+var string last_signal_type = na
+var float last_signal_confidence = na
+
+// Calculate dynamic cooldown based on market conditions
+calculate_dynamic_cooldown() =>
+    base_cooldown_bars = math.round(base_cooldown / timeframe.multiplier)  // Convert minutes to bars
+    
+    // Volatility adjustment
+    volatility_multiplier = atr_normalized > volatility_threshold ? 1.5 : 1.0
+    
+    // Market regime adjustment
+    regime_multiplier = switch market_regime
+        "sideways" => 2.0      // Double cooldown in sideways market
+        "volatile" => 1.8      // Increase cooldown in volatile market
+        "consolidation" => 2.5  // Maximum cooldown in consolidation
+        => 1.0
+    
+    // Recent performance adjustment
+    performance_multiplier = 1.0  // Will be updated by adaptive system
+    
+    final_cooldown = base_cooldown_bars * volatility_multiplier * regime_multiplier * performance_multiplier
+    math.round(final_cooldown)
+
+dynamic_cooldown_bars = calculate_dynamic_cooldown()
+
+// Check if cooldown period has passed
+cooldown_ok = na(last_signal_bar) or (bar_index - last_signal_bar) >= dynamic_cooldown_bars
+
+// =====================
+// === ETHUSDT-SPECIFIC OPTIMIZATIONS
+// =====================
+
+// Detect if we're trading ETHUSDT
+is_eth_symbol = str.contains(syminfo.ticker, "ETH")
+
+// ETHUSDT range detection
+eth_48h_high = ta.highest(high, 48)
+eth_48h_low = ta.lowest(low, 48)
+eth_range_size = eth_48h_high - eth_48h_low
+is_eth_range_bound = is_eth_symbol and eth_range_size < eth_range_threshold
+
+// ETHUSDT trend bias (currently bullish based on analysis)
+eth_trend_bias = close > ta.sma(close, 200)  // Long-term trend
+
+// =====================
+// === ENHANCED CONFIDENCE SCORING SYSTEM
+// =====================
+
+// Module 1: Trend Analysis (25% weight)
+trend_score_bull = 0.0
+trend_score_bear = 0.0
+
+// Local trend
+if close > ema_fast and ema_fast > ema_slow
+    trend_score_bull += 0.4
+if close < ema_fast and ema_fast < ema_slow
+    trend_score_bear += 0.4
+
+// HTF trend alignment
+if close_htf > ema_htf
+    trend_score_bull += 0.3
+if close_htf < ema_htf
+    trend_score_bear += 0.3
+
+// VWAP position
+if close > vwap
+    trend_score_bull += 0.3
+if close < vwap
+    trend_score_bear += 0.3
+
+// Module 2: Momentum Analysis (20% weight - reduced from 30%)
+momentum_score_bull = 0.0
+momentum_score_bear = 0.0
+
+// RSI with dynamic thresholds
+rsi_bull_threshold = market_regime == "sideways" ? 35 : 40
+rsi_bear_threshold = market_regime == "sideways" ? 65 : 60
+
+if rsi < rsi_bull_threshold and rsi_momentum > 0
+    momentum_score_bull += 0.5
+if rsi > rsi_bear_threshold and rsi_momentum < 0
+    momentum_score_bear += 0.5
+
+// RSI divergence (simplified)
+if rsi > rsi[1] and low < low[1]
+    momentum_score_bull += 0.5
+if rsi < rsi[1] and high > high[1]
+    momentum_score_bear += 0.5
+
+// Module 3: Market Structure (25% weight)
+structure_score_bull = 0.0
+structure_score_bear = 0.0
+
+// Support/Resistance (simplified)
+recent_support = ta.lowest(low, 20)
+recent_resistance = ta.highest(high, 20)
+
+if math.abs(close - recent_support) / close < 0.01
+    structure_score_bull += 0.5
+if math.abs(close - recent_resistance) / close < 0.01
+    structure_score_bear += 0.5
+
+// Price action confirmation
+body_size = math.abs(close - open)
+if body_size > atr * price_action_threshold
+    if close > open
+        structure_score_bull += 0.5
+    else
+        structure_score_bear += 0.5
+
+// Module 4: Volume Quality (20% weight)
+volume_score_bull = volume_quality_confirmed and close > open ? 1.0 : 0.0
+volume_score_bear = volume_quality_confirmed and close < open ? 1.0 : 0.0
+
+// Module 5: Market Regime Bonus (10% weight)
+regime_score_bull = 0.0
+regime_score_bear = 0.0
+
+if market_regime == "trending_bull"
+    regime_score_bull += 1.0
+else if market_regime == "trending_bear"
+    regime_score_bear += 1.0
+else if market_regime == "sideways" and is_eth_range_bound
+    // In range-bound market, favor mean reversion
+    if close < (eth_48h_high + eth_48h_low) / 2
+        regime_score_bull += 0.5
+    else
+        regime_score_bear += 0.5
+
+// =====================
+// === FINAL CONFIDENCE CALCULATION
+// =====================
+
+// Weighted confidence calculation
+raw_confidence_bull = (trend_score_bull * 0.25) + 
+                     (momentum_score_bull * 0.20) + 
+                     (structure_score_bull * 0.25) + 
+                     (volume_score_bull * 0.20) + 
+                     (regime_score_bull * 0.10)
+
+raw_confidence_bear = (trend_score_bear * 0.25) + 
+                     (momentum_score_bear * 0.20) + 
+                     (structure_score_bear * 0.25) + 
+                     (volume_score_bear * 0.20) + 
+                     (regime_score_bear * 0.10)
+
+// Apply market regime multiplier
+confidence_bull = raw_confidence_bull * regime_confidence_multiplier
+confidence_bear = raw_confidence_bear * regime_confidence_multiplier
+
+// ETHUSDT-specific adjustments
+if is_eth_symbol
+    // More conservative in range-bound market
+    if is_eth_range_bound
+        confidence_bull *= 0.9
+        confidence_bear *= 0.9
+    
+    // Bullish bias adjustment
+    if eth_trend_bias
+        confidence_bear *= eth_bear_penalty
+    
+    // Overbought/oversold penalties
+    if rsi > 75
+        confidence_bull *= 0.6
+    if rsi < 25
+        confidence_bear *= 0.6
+
+// Normalize confidence scores
+confidence_bull := math.min(1.0, confidence_bull)
+confidence_bear := math.min(1.0, confidence_bear)
+
+// =====================
+// === DYNAMIC MINIMUM CONFIDENCE
+// =====================
+
+// Adaptive confidence threshold based on recent performance
+var float dynamic_min_confidence = base_min_confidence
+var array<bool> recent_signals = array.new<bool>()
+
+// Update dynamic confidence (simplified for now)
+if market_regime == "sideways" or market_regime == "consolidation"
+    dynamic_min_confidence := base_min_confidence + 0.10  // Higher threshold in choppy markets
+else if market_regime == "trending_bull" or market_regime == "trending_bear"
+    dynamic_min_confidence := base_min_confidence - 0.05  // Lower threshold in trending markets
+else
+    dynamic_min_confidence := base_min_confidence
+
+// =====================
+// === ENTRY CONDITIONS WITH ENHANCED FILTERS
+// =====================
+
+// Base entry conditions
+base_can_enter_long = allow_long and 
+                     confidence_bull >= dynamic_min_confidence and 
+                     volume_quality_confirmed and 
+                     cooldown_ok and
+                     not (rsi > 85)  // Extreme overbought protection
+
+base_can_enter_short = allow_short and 
+                      confidence_bear >= dynamic_min_confidence and 
+                      volume_quality_confirmed and 
+                      cooldown_ok and
+                      not (rsi < 15)  // Extreme oversold protection
+
+// Signal priority logic (prevent dual signals)
+can_enter_long = base_can_enter_long and (not base_can_enter_short or confidence_bull > confidence_bear)
+can_enter_short = base_can_enter_short and (not base_can_enter_long or confidence_bear > confidence_bull)
+
+// =====================
+// === ENHANCED STOP LOSS & TAKE PROFIT
+// =====================
+
+// Calculate SL/TP with multiple methods
+calc_enhanced_sl_tp_long() =>
+    // ATR-based SL
+    atr_sl = close - (atr * atr_sl_multiplier)
+    
+    // Recent swing low SL
+    swing_sl = ta.lowest(low, 10) - (atr * 0.1)
+    
+    // Support level SL
+    support_sl = recent_support - (atr * 0.2)
+    
+    // Take the most conservative (highest) SL
+    sl_price = math.max(atr_sl, math.max(swing_sl, support_sl))
+    sl_distance = close - sl_price
+    
+    // Enhanced TP calculation
+    base_tp = close + (sl_distance * rr_target)
+    
+    // Resistance-adjusted TP
+    resistance_tp = math.min(base_tp, recent_resistance - (atr * 0.1))
+    
+    [sl_price, resistance_tp, sl_distance]
+
+calc_enhanced_sl_tp_short() =>
+    // ATR-based SL
+    atr_sl = close + (atr * atr_sl_multiplier)
+    
+    // Recent swing high SL
+    swing_sl = ta.highest(high, 10) + (atr * 0.1)
+    
+    // Resistance level SL
+    resistance_sl = recent_resistance + (atr * 0.2)
+    
+    // Take the most conservative (lowest) SL
+    sl_price = math.min(atr_sl, math.min(swing_sl, resistance_sl))
+    sl_distance = sl_price - close
+    
+    // Enhanced TP calculation
+    base_tp = close - (sl_distance * rr_target)
+    
+    // Support-adjusted TP
+    support_tp = math.max(base_tp, recent_support + (atr * 0.1))
+    
+    [sl_price, support_tp, sl_distance]
+
+// Calculate SL/TP values
+[sl_long, tp_long, sl_dist_long] = calc_enhanced_sl_tp_long()
+[sl_short, tp_short, sl_dist_short] = calc_enhanced_sl_tp_short()
+
+// =====================
+// === RISK MANAGEMENT SAFEGUARDS
+// =====================
+
+// CRITICAL: Calculate position size with safeguards
+calculate_safe_position_size(sl_distance) =>
+    if sl_distance <= 0
+        0.0  // Invalid SL distance
+    else
+        // Risk-based calculation
+        risk_amount = strategy.equity * risk_per_trade
+        position_value = risk_amount / sl_distance * close
+        position_size_pct = position_value / strategy.equity
+        
+        // CRITICAL: Apply maximum risk cap
+        final_risk_pct = math.min(position_size_pct, max_risk_per_trade)
+        
+        // CRITICAL: Minimum position size check
+        if final_risk_pct < 0.01  // Less than 1%
+            0.0
+        else
+            final_risk_pct * 100  // Convert to percentage
+
+// =====================
+// === TRADE EXECUTION WITH SAFEGUARDS
+// =====================
+
+if can_enter_long and sl_dist_long > 0
+    position_size = calculate_safe_position_size(sl_dist_long)
+    
+    if position_size > 0
+        strategy.entry("Long", strategy.long, qty=position_size, comment="Sniper Long: " + str.tostring(confidence_bull, "#.##"))
+        
+        if use_trailing_stop
+            trail_points = math.round((close * trailing_stop_pct / 100) / syminfo.mintick)
+            strategy.exit("Exit Long", "Long", stop=sl_long, limit=tp_long, trail_points=trail_points, trail_offset=trail_points)
+        else
+            strategy.exit("Exit Long", "Long", stop=sl_long, limit=tp_long)
+        
+        // Update tracking variables
+        last_signal_bar := bar_index
+        last_signal_type := "LONG"
+        last_signal_confidence := confidence_bull
+
+if can_enter_short and sl_dist_short > 0
+    position_size = calculate_safe_position_size(sl_dist_short)
+    
+    if position_size > 0
+        strategy.entry("Short", strategy.short, qty=position_size, comment="Sniper Short: " + str.tostring(confidence_bear, "#.##"))
+        
+        if use_trailing_stop
+            trail_points = math.round((close * trailing_stop_pct / 100) / syminfo.mintick)
+            strategy.exit("Exit Short", "Short", stop=sl_short, limit=tp_short, trail_points=trail_points, trail_offset=trail_points)
+        else
+            strategy.exit("Exit Short", "Short", stop=sl_short, limit=tp_short)
+        
+        // Update tracking variables
+        last_signal_bar := bar_index
+        last_signal_type := "SHORT"
+        last_signal_confidence := confidence_bear
+
+// =====================
+// === VISUALIZATION
+// =====================
+
+// Plot EMAs
+plot(show_ema ? ema_fast : na, "EMA Fast", color=color.blue, linewidth=2)
+plot(show_ema ? ema_slow : na, "EMA Slow", color=color.red, linewidth=2)
+plot(show_ema ? ema_htf : na, "EMA HTF", color=color.purple, linewidth=2, style=plot.style_circles)
+
+// Plot VWAP
+plot(vwap, "VWAP", color=color.orange, linewidth=2)
+
+// Market regime background
+regime_color = switch market_regime
+    "trending_bull" => color.new(color.green, 95)
+    "trending_bear" => color.new(color.red, 95)
+    "sideways" => color.new(color.yellow, 95)
+    "volatile" => color.new(color.purple, 95)
+    "consolidation" => color.new(color.gray, 95)
+    => color.new(color.white, 100)
+
+bgcolor(show_regime ? regime_color : na, title="Market Regime")
+
+// Enhanced entry signals
+signal_color_long = confidence_bull > 0.8 ? color.lime : color.green
+signal_color_short = confidence_bear > 0.8 ? color.red : color.orange
+
+plotshape(show_signals and can_enter_long ? low : na, "Long Signal", 
+          shape.triangleup, location.belowbar, signal_color_long, size=size.normal)
+plotshape(show_signals and can_enter_short ? high : na, "Short Signal", 
+          shape.triangledown, location.abovebar, signal_color_short, size=size.normal)
+
+// Confidence levels
+plot(confidence_bull * 100, "Bull Confidence %", color=color.green, linewidth=1)
+plot(confidence_bear * 100, "Bear Confidence %", color=color.red, linewidth=1)
+plot(dynamic_min_confidence * 100, "Dynamic Min Confidence %", color=color.yellow, linewidth=1, style=plot.style_line)
+
+// =====================
+// === DEBUG INFORMATION
+// =====================
+
+if show_debug and barstate.islast
+    var table debug_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1)
+    
+    table.clear(debug_table, 0, 0)
+    
+    // Header
+    table.cell(debug_table, 0, 0, "SNIPER ENHANCED v2.0", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(debug_table, 1, 0, "VALUES", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    
+    // Market regime
+    table.cell(debug_table, 0, 1, "Market Regime", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 1, market_regime, text_color=color.blue, text_size=size.tiny)
+    
+    // Confidence scores
+    table.cell(debug_table, 0, 2, "Bull Confidence", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 2, str.tostring(confidence_bull, "#.###"), text_color=confidence_bull >= dynamic_min_confidence ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debug_table, 0, 3, "Bear Confidence", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 3, str.tostring(confidence_bear, "#.###"), text_color=confidence_bear >= dynamic_min_confidence ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debug_table, 0, 4, "Dynamic Min Conf", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 4, str.tostring(dynamic_min_confidence, "#.##"), text_color=color.blue, text_size=size.tiny)
+    
+    // Volume quality
+    table.cell(debug_table, 0, 5, "Volume Quality", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 5, volume_quality_confirmed ? "✓ PASS" : "✗ FAIL", text_color=volume_quality_confirmed ? color.green : color.red, text_size=size.tiny)
+    
+    // Cooldown status
+    table.cell(debug_table, 0, 6, "Cooldown OK", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 6, cooldown_ok ? "✓ YES" : "✗ NO", text_color=cooldown_ok ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debug_table, 0, 7, "Dynamic Cooldown", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 7, str.tostring(dynamic_cooldown_bars) + " bars", text_color=color.gray, text_size=size.tiny)
+    
+    // Entry readiness
+    table.cell(debug_table, 0, 8, "Can Enter Long", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 8, can_enter_long ? "✓ YES" : "✗ NO", text_color=can_enter_long ? color.green : color.red, text_size=size.tiny)
+    
+    table.cell(debug_table, 0, 9, "Can Enter Short", text_color=color.black, text_size=size.tiny)
+    table.cell(debug_table, 1, 9, can_enter_short ? "✓ YES" : "✗ NO", text_color=can_enter_short ? color.green : color.red, text_size=size.tiny)
+    
+    // ETHUSDT specific
+    if is_eth_symbol
+        table.cell(debug_table, 0, 10, "ETH Range Bound", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 10, is_eth_range_bound ? "YES ($" + str.tostring(eth_range_size, "#.0") + ")" : "NO", text_color=is_eth_range_bound ? color.orange : color.gray, text_size=size.tiny)
+        
+        table.cell(debug_table, 0, 11, "ETH Trend Bias", text_color=color.black, text_size=size.tiny)
+        table.cell(debug_table, 1, 11, eth_trend_bias ? "BULLISH" : "BEARISH", text_color=eth_trend_bias ? color.green : color.red, text_size=size.tiny)
+
+// =====================
+// === ALERT SYSTEM (ENHANCED)
+// =====================
+
+// Enhanced alert conditions with better filtering
+long_alert_condition = can_enter_long and confidence_bull >= dynamic_min_confidence
+short_alert_condition = can_enter_short and confidence_bear >= dynamic_min_confidence
+
+// Plot alert signals
+plotshape(long_alert_condition, title="🎯 LONG ALERT", location=location.belowbar, color=color.lime, style=shape.triangleup, size=size.large)
+plotshape(short_alert_condition, title="🎯 SHORT ALERT", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.large)
+
+// Alert messages with enhanced data (Pine v5 compatible)
+alertcondition(long_alert_condition, title="🎯 Sniper ENHANCED v2.0 Long Entry", 
+               message='{"action": "BUY", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "timestamp": "{{time}}", "strategy": "Sniper Enhanced v2.0", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+alertcondition(short_alert_condition, title="🎯 Sniper ENHANCED v2.0 Short Entry", 
+               message='{"action": "SELL", "symbol": "{{ticker}}", "exchange": "bybit", "price": {{close}}, "timestamp": "{{time}}", "strategy": "Sniper Enhanced v2.0", "timeframe": "{{interval}}", "token": "sniper-bybit-production-2024"}')
+
+// =====================
+// === END OF ENHANCED SNIPER STRATEGY v2.0
+// =====================
